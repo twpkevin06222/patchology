@@ -86,7 +86,7 @@ with TileGenerator("sample.svs", roi="sample.svs_roi_annotations.geojson") as ge
 Segmentation tiles: `SegmentationTileGenerator` takes a GeoJSON ground truth
 and yields `((x, y), tile, mask)`, with `mask` a `(tile_size, tile_size)` uint8
 array aligned with the tile. With `class_map` (annotation class name to label,
-1-255) each object is drawn with its class's label and objects of unmapped
+with integer larger than 0 [default background label value]) each object is drawn with its class's label and objects of unmapped
 classes are ignored; without it the mask is 0/1. A tile is kept if at least
 `object_mask_overlap` (e.g. 0.2 = 20%) of it is ground truth; 0 keeps every
 tissue tile, including empty masks. All `TileGenerator` options (ICC, stain
@@ -190,8 +190,8 @@ tested with patchology.
 | Hamamatsu NDPI | `.ndpi` | ✅ | ✅ |
 | Hamamatsu VMS / VMU | `.vms`, `.vmu` | ✅ | ❌ |
 | 3DHISTECH MIRAX | `.mrxs` | ✅ | ✅ |
-| Ventana | `.bif` | ✅ | ✅ |
-| DICOM WSI | `.dcm` | ✅ | listed, untested ¹ |
+| Ventana | `.bif` | ✅ (patched build only) | ✅ |
+| DICOM WSI | `.dcm` | ✅ | listed, untested (here) ¹ |
 | Philips TIFF | `.tiff` | ✅ | ? ² |
 | Philips iSyntax | `.isyntax`, `.i2syntax` | ❌ | ✅ |
 | PreciPoint VMIC | `.vmic` | ✅ (patched build only) | ❌ |

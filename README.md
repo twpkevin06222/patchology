@@ -15,7 +15,7 @@ so no system package is needed); the `fastslide` extra adds the FastSlide
 backend.
 
 ```bash
-git clone <repo-url> patchology
+git clone https://github.com/twpkevin06222/patchology.git
 cd patchology
 
 pip install -e .                # OpenSlide backend

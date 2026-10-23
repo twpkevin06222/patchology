@@ -1,0 +1,65 @@
+[project]
+name = "patchology"
+version = "0.1.0"
+description = "Whole slide image tissue detection, artifact removal and tiling."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    { name = "twpkevin06222", email = "tengwaipokevin@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python-headless>=4.10",
+    "openslide-bin>=4.0.0",
+    "openslide-python>=1.4.3",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+fastslide = [
+    "fastslide>=0.8.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+# Local stain reference images are user data, never packaged.
+exclude = ["src/patchology/references/"]
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint.flake8-bugbear]
+# Frozen config dataclasses are safe to use as default arguments.
+extend-immutable-calls = [
+    "patchology.color.ColorConfig",
+    "patchology.tiling.tiler.TilingConfig",
+    "patchology.tissue.artifacts.ArtifactConfig",
+    "patchology.tissue.detection.TissueConfig",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["patchology"]
+known-local-folder = ["conftest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = [
+    "--import-mode=importlib",
+    # ROS Jazzy on PYTHONPATH registers pytest plugins that crash on import here.
+    "-p", "no:launch_testing",
+    "-p", "no:launch_ros",
+    "-p", "no:ament_copyright",
+    "-p", "no:ament_flake8",
+    "-p", "no:ament_lint",
+    "-p", "no:ament_pep257",
+    "-p", "no:ament_xmllint",
+]

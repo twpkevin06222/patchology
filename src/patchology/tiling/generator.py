@@ -133,7 +133,9 @@ class TileGenerator:
         width, height = self.dimensions
         tissue_mm2 = self.tissue_mask.area_fraction() * width * height * self.mpp**2 / 1e6
         logger.info(
-            "%s: %d x %d px, %.4f mpp, scanner %s, %d level(s); %d tile(s), tissue %.2f mm^2",
+            "slide name: %s | slide dimensions: (%d, %d) | slide MPP: %.4f | "
+            "scanner: %s | level count: %d\n"
+            "generated tiles: %d | tissue area: %.2f mm^2",
             self.path.name,
             width,
             height,

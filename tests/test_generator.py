@@ -29,8 +29,8 @@ def test_init_runs_pipeline_and_logs_summary(slide: ArrayReader, caplog):
     assert gen.level_count == 3 and gen.icc_profile is None
     assert gen.tissue_mask.area_fraction() > 0
     summary = caplog.records[-1].getMessage()
-    assert "scanner synthetic" in summary and f"{len(gen)} tile(s)" in summary
-    assert "0.5000 mpp" in summary and "mm^2" in summary
+    assert "scanner: synthetic" in summary and f"generated tiles: {len(gen)}" in summary
+    assert "slide MPP: 0.5000" in summary and "mm^2" in summary
 
 
 def test_stain_normalization_and_override_mpp(slide: ArrayReader):

@@ -64,7 +64,7 @@ from patchology import ColorConfig, TileGenerator
 
 with TileGenerator("slide.svs", color=ColorConfig(stain_normalization="macenko")) as gen:
     gen.properties, gen.dimensions, gen.mpp, gen.icc_profile  # no tiling needed
-    gen.tissue_mask, gen.artifact_mask, gen.coords, gen.source_stains  # run on first use
+    gen.tissue_mask, gen.artifact_mask, gen.coords, gen.source_stains  # computed in __init__
     for (x, y), tile in gen:  # ICC -> tissue -> artifacts -> tiles -> stain norm
         ...
 ```

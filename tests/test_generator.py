@@ -19,15 +19,18 @@ def test_yields_same_tiles_as_pipeline(slide: ArrayReader):
     assert gen[0][0] == (x, y)
 
 
-def test_slide_properties_do_not_run_pipeline(slide: ArrayReader):
-    gen = TileGenerator(slide, tiling=CONFIG)
+def test_init_runs_pipeline_and_logs_summary(slide: ArrayReader, caplog):
+    with caplog.at_level("INFO", logger="patchology.tiling.generator"):
+        gen = TileGenerator(slide, tiling=CONFIG)
+    assert "result" in gen.__dict__
     assert gen.dimensions == slide.dimensions
     assert gen.mpp == 0.5 and gen.mpp_xy == (0.5, 0.5)
     assert gen.properties["openslide.vendor"] == "synthetic"
     assert gen.level_count == 3 and gen.icc_profile is None
-    assert "result" not in gen.__dict__
     assert gen.tissue_mask.area_fraction() > 0
-    assert "result" in gen.__dict__
+    summary = caplog.records[-1].getMessage()
+    assert "scanner synthetic" in summary and f"{len(gen)} tile(s)" in summary
+    assert "0.5000 mpp" in summary and "mm^2" in summary
 
 
 def test_stain_normalization_and_override_mpp(slide: ArrayReader):

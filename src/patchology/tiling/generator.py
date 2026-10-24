@@ -17,6 +17,7 @@ from PIL import Image
 
 from patchology.color import ColorConfig, Stains
 from patchology.reader import Backend, SlideReader, open_slide
+from patchology.reader.base import PROPERTY_NAME_VENDOR
 from patchology.tiling.tiler import (
     TilingConfig,
     TilingPipeline,
@@ -42,10 +43,9 @@ class TileGenerator:
     """Tile a slide: ICC calibration -> tissue -> artifacts -> tiles -> stain normalisation.
 
     Iterating yields ``((x, y), tile)`` with level-0 top-left coordinates and
-    ``(tile_size, tile_size, 3)`` uint8 RGB tiles. The pipeline runs on first
-    use of anything that needs it (iteration, masks, coordinates) and is
-    reused afterwards, so iterating twice reads the tiles twice but detects
-    tissue once.
+    ``(tile_size, tile_size, 3)`` uint8 RGB tiles. The pipeline (tissue,
+    artifacts, tile selection) runs in ``__init__``, which logs a slide summary,
+    so iterating twice reads the tiles twice but detects tissue once.
 
     It is a map-style dataset (``len`` and integer indexing), so it can be
     wrapped in a ``torch.utils.data.Dataset`` and used with a ``DataLoader``
@@ -123,9 +123,26 @@ class TileGenerator:
                 self.roi = load_roi(
                     self.roi_path, self.slide.dimensions, exclude_classes=roi_exclude_classes
                 )
+            self._run_pipeline()
         except Exception:
             self.close()
             raise
+
+    def _run_pipeline(self) -> None:
+        """Compute :attr:`result` and log a summary of the slide and its tiles."""
+        width, height = self.dimensions
+        tissue_mm2 = self.tissue_mask.area_fraction() * width * height * self.mpp**2 / 1e6
+        logger.info(
+            "%s: %d x %d px, %.4f mpp, scanner %s, %d level(s); %d tile(s), tissue %.2f mm^2",
+            self.path.name,
+            width,
+            height,
+            self.mpp,
+            self.properties.get(PROPERTY_NAME_VENDOR, "unknown"),
+            self.level_count,
+            len(self),
+            tissue_mm2,
+        )
 
     def _resolve_roi(self, roi: Path, check_name: bool) -> Path:
         if roi.is_dir():
@@ -152,7 +169,7 @@ class TileGenerator:
 
     @functools.cached_property
     def result(self) -> TilingResult:
-        """The tiling result; computed on first access."""
+        """The tiling result; computed in ``__init__``."""
         return self.pipeline.run(self.slide, self._tissue_mask, self.roi)
 
     def __iter__(self) -> Iterator[tuple[tuple[int, int], np.ndarray]]:
@@ -394,6 +411,15 @@ class SegmentationTileGenerator(TileGenerator):
         # (x0, y0, x1, y1) of each exterior ring, to skip polygons off a tile.
         self._bboxes = np.array([[*p[0].min(axis=0), *p[0].max(axis=0)] for p in self.polygons])
         logger.info("loaded ground truth %s: %d polygon(s)", path.name, len(self.polygons))
+        try:
+            super()._run_pipeline()
+        except Exception:
+            self.close()
+            raise
+
+    def _run_pipeline(self) -> None:
+        # Skipped in TileGenerator.__init__: selection needs the ground truth loaded above.
+        pass
 
     def _select_classes(self, path: Path, class_map: Mapping[str, int]) -> None:
         unmapped = sorted({str(c) for c in self.classes if c not in class_map})
@@ -407,7 +433,7 @@ class SegmentationTileGenerator(TileGenerator):
 
     @functools.cached_property
     def result(self) -> TilingResult:
-        """Tissue tiles that overlap the ground truth enough; computed on first access."""
+        """Tissue tiles that overlap the ground truth enough; computed in ``__init__``."""
         result = TileGenerator.result.func(self)
         fractions = np.array(
             [(self._mask(x, y, result) > 0).mean() for x, y in result.coords], dtype=float

@@ -8,7 +8,7 @@ ASAP = """<?xml version="1.0" ?>
 <ASAP_Annotations><Annotations>
   <Annotation Name="a" Type="Polygon" PartOfGroup="invasive tumor">
     <Coordinates>
-      <Coordinate Order="1" X="10" Y="0"/><Coordinate Order="0" X="0" Y="0"/>
+      <Coordinate Order="1" X="10" Y="0"/><Coordinate Order="0" X="0,5" Y="0"/>
       <Coordinate Order="2" X="10" Y="10"/>
     </Coordinates>
   </Annotation>
@@ -36,7 +36,8 @@ def test_asap_xml_round_trips_through_loader(tmp_path):
     # Dot skipped by the loader, 1-vertex polygon dropped by the converter.
     assert classes == ["invasive tumor", None]
     ring = polygons[0][0]
-    np.testing.assert_array_equal(ring, [[0, 0], [10, 0], [10, 10], [0, 0]])  # ordered, closed
+    # Ordered, closed, and the decimal comma read as a point.
+    np.testing.assert_array_equal(ring, [[0.5, 0], [10, 0], [10, 10], [0.5, 0]])
 
 
 def test_rejects_non_asap_xml(tmp_path):

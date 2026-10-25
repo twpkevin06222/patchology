@@ -32,6 +32,7 @@ from patchology.tissue.roi import (
     find_roi,
     load_classified_polygons,
     load_roi,
+    polygons_to_mask,
     rasterize_polygons,
     roi_matches_slide,
 )
@@ -344,6 +345,11 @@ class SegmentationTileGenerator(TileGenerator):
     uint8 array aligned pixel for pixel with ``tile``: 0 for background and
     each object's label from ``class_map`` (1 for every object without one).
 
+    A file that also outlines where it was annotated (e.g. TIGER ``roi``
+    boxes) is handled with ``roi_class``: those objects become the ROI, and
+    mask pixels outside them are ``ignore_index`` rather than background, so
+    a loss can skip them (``CrossEntropyLoss(ignore_index=255)``).
+
     Example::
 
         with SegmentationTileGenerator(
@@ -363,6 +369,8 @@ class SegmentationTileGenerator(TileGenerator):
         object_mask_overlap: float = 0.2,
         class_map: Mapping[str, int] | None = None,
         check_ground_truth_name: bool = True,
+        roi_class: str | None = None,
+        ignore_index: int = 255,
         **kwargs,
     ) -> None:
         """
@@ -379,11 +387,20 @@ class SegmentationTileGenerator(TileGenerator):
                 mask of all objects.
             check_ground_truth_name: Refuse a file whose name does not contain
                 the slide name, so masks are never taken from another slide.
+            roi_class: Class name of the objects in ``ground_truth`` that mark
+                the annotated region rather than a label, e.g. ``"roi"`` for
+                TIGER. Tiles come only from inside them (and inside ``roi``
+                if also given), and mask pixels outside them are
+                ``ignore_index``. None treats every object as ground truth.
+            ignore_index: Mask value for pixels outside the ``roi_class``
+                region, in ``[1, 255]`` and not used by ``class_map``. Unused
+                without ``roi_class``.
             **kwargs: Passed to :class:`TileGenerator` (tiling, color, roi, ...).
 
         Raises:
-            ValueError: Bad ``object_mask_overlap`` or ``class_map``, unreadable
-                file, no object of a mapped class, or a file named for another slide.
+            ValueError: Bad ``object_mask_overlap``, ``class_map`` or
+                ``ignore_index``, unreadable file, no object of a mapped class
+                or of ``roi_class``, or a file named for another slide.
         """
         if not 0.0 <= object_mask_overlap <= 1.0:
             raise ValueError(f"object_mask_overlap must be in [0, 1], got {object_mask_overlap}")
@@ -391,6 +408,11 @@ class SegmentationTileGenerator(TileGenerator):
             isinstance(v, int) and 1 <= v <= 255 for v in class_map.values()
         ):
             raise ValueError(f"class_map labels must be integers in [1, 255], got {class_map}")
+        if roi_class is not None:
+            if not 1 <= ignore_index <= 255:
+                raise ValueError(f"ignore_index must be in [1, 255], got {ignore_index}")
+            if class_map is not None and ignore_index in class_map.values():
+                raise ValueError(f"ignore_index {ignore_index} is also a class_map label")
         super().__init__(slide, **kwargs)
         try:
             path = Path(ground_truth)
@@ -400,6 +422,9 @@ class SegmentationTileGenerator(TileGenerator):
                     "pass check_ground_truth_name=False to use it anyway"
                 )
             self.polygons, self.classes = load_classified_polygons(path)
+            self.roi_polygons = None
+            if roi_class is not None:
+                self._split_roi(path, roi_class)
             if class_map is not None:
                 self._select_classes(path, class_map)
         except Exception:
@@ -408,6 +433,7 @@ class SegmentationTileGenerator(TileGenerator):
         self.ground_truth_path = path
         self.object_mask_overlap = object_mask_overlap
         self.class_map = None if class_map is None else dict(class_map)
+        self.roi_class, self.ignore_index = roi_class, ignore_index
         self.labels = (
             [1] * len(self.polygons) if class_map is None else [class_map[c] for c in self.classes]
         )
@@ -424,6 +450,18 @@ class SegmentationTileGenerator(TileGenerator):
         # Skipped in TileGenerator.__init__: selection needs the ground truth loaded above.
         pass
 
+    def _split_roi(self, path: Path, roi_class: str) -> None:
+        is_roi = [c == roi_class for c in self.classes]
+        if not any(is_roi):
+            raise ValueError(f"{path.name} has no object of roi_class {roi_class!r}")
+        if all(is_roi):
+            raise ValueError(f"{path.name} has only {roi_class!r} objects, no ground truth")
+        self.roi_polygons = [p for p, r in zip(self.polygons, is_roi) if r]
+        self.polygons = [p for p, r in zip(self.polygons, is_roi) if not r]
+        self.classes = [c for c, r in zip(self.classes, is_roi) if not r]
+        region = polygons_to_mask(self.roi_polygons, self.slide.dimensions)
+        self.roi = region if self.roi is None else self.roi & region
+
     def _select_classes(self, path: Path, class_map: Mapping[str, int]) -> None:
         unmapped = sorted({str(c) for c in self.classes if c not in class_map})
         if unmapped:
@@ -439,7 +477,8 @@ class SegmentationTileGenerator(TileGenerator):
         """Tissue tiles that overlap the ground truth enough; computed in ``__init__``."""
         result = TileGenerator.result.func(self)
         fractions = np.array(
-            [(self._mask(x, y, result) > 0).mean() for x, y in result.coords], dtype=float
+            [self._labelled(self._mask(x, y, result)).mean() for x, y in result.coords],
+            dtype=float,
         )
         keep = fractions >= self.object_mask_overlap
         self.object_fraction = fractions[keep]
@@ -481,6 +520,8 @@ class SegmentationTileGenerator(TileGenerator):
             "polygons": len(self.polygons),
             "object_mask_overlap": self.object_mask_overlap,
             "class_map": self.class_map,
+            "roi_class": self.roi_class,
+            "ignore_index": self.ignore_index if self.roi_class is not None else None,
         }
         return meta
 
@@ -489,11 +530,19 @@ class SegmentationTileGenerator(TileGenerator):
         extent = result.level0_tile_size
         b = self._bboxes
         hit = (b[:, 0] < x + extent) & (b[:, 2] > x) & (b[:, 1] < y + extent) & (b[:, 3] > y)
-        if not hit.any():
-            return np.zeros((size, size), np.uint8)
-        polygons = [p for p, h in zip(self.polygons, hit) if h]
-        labels = [v for v, h in zip(self.labels, hit) if h]
-        scale = size / extent
-        return rasterize_polygons(
-            polygons, (size, size), (scale, scale), (float(x), float(y)), labels
-        )
+        scale, origin = (size / extent,) * 2, (float(x), float(y))
+        mask = np.zeros((size, size), np.uint8)
+        if hit.any():
+            polygons = [p for p, h in zip(self.polygons, hit) if h]
+            labels = [v for v, h in zip(self.labels, hit) if h]
+            mask = rasterize_polygons(polygons, (size, size), scale, origin, labels)
+        if self.roi_polygons is not None:
+            inside = rasterize_polygons(self.roi_polygons, (size, size), scale, origin)
+            mask[inside == 0] = self.ignore_index
+        return mask
+
+    def _labelled(self, mask: np.ndarray) -> np.ndarray:
+        """Pixels with a ground-truth label, i.e. neither background nor ignored."""
+        if self.roi_polygons is None:
+            return mask > 0
+        return (mask > 0) & (mask != self.ignore_index)

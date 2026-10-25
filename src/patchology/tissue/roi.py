@@ -118,6 +118,18 @@ def rasterize_polygons(
     return mask
 
 
+def polygons_to_mask(
+    polygons: list[Polygon],
+    slide_dimensions: tuple[int, int],
+    downsample: float = ROI_DOWNSAMPLE,
+) -> SlideMask:
+    """Rasterise level-0 ``polygons`` into a slide mask ``downsample`` times smaller."""
+    width, height = slide_dimensions
+    shape = (max(1, round(height / downsample)), max(1, round(width / downsample)))
+    mask = rasterize_polygons(polygons, shape, (shape[1] / width, shape[0] / height))
+    return SlideMask.from_array(mask, slide_dimensions)
+
+
 def load_roi(
     path: str | Path,
     slide_dimensions: tuple[int, int],
@@ -138,10 +150,7 @@ def load_roi(
         polygons = [p for p, c in zip(polygons, classes) if c not in exclude_classes]
         if not polygons:
             raise ValueError(f"{Path(path).name}: every object is in {sorted(exclude_classes)}")
-    width, height = slide_dimensions
-    shape = (max(1, round(height / downsample)), max(1, round(width / downsample)))
-    mask = rasterize_polygons(polygons, shape, (shape[1] / width, shape[0] / height))
-    roi = SlideMask.from_array(mask, slide_dimensions)
+    roi = polygons_to_mask(polygons, slide_dimensions, downsample)
     logger.info(
         "loaded ROI {}: {} polygon(s), {:.1f}% of slide",
         Path(path).name,

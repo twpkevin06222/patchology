@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import patchology.reader as reader_module
+from patchology import TileGenerator
 from patchology.reader import SlideOpenError, open_slide
 
 from conftest import ArrayReader
@@ -89,6 +90,16 @@ def test_open_slide_falls_back(monkeypatch, tmp_path: Path, slide_image):
 
     _patch_backends(monkeypatch, {"openslide": _failing, "fastslide": working})
     assert open_slide(path, "openslide").backend == "array"
+
+
+def test_tile_generator_fallback_flag(monkeypatch, tmp_path: Path, slide_image):
+    path = tmp_path / "slide.svs"
+    path.touch()
+    working = lambda p: ArrayReader(slide_image, path=p)
+    _patch_backends(monkeypatch, {"openslide": _failing, "fastslide": working})
+    assert TileGenerator(path).backend == "array"
+    with pytest.raises(SlideOpenError, match="openslide: unsupported format"):
+        TileGenerator(path, fallback=False)
 
 
 def test_open_slide_reports_every_backend_error(monkeypatch, tmp_path: Path):

@@ -114,6 +114,12 @@ def test_missing_mpp_requires_override(slide_image):
     assert result.slide_mpp == 0.5
 
 
+def test_implausible_mpp_rejected(slide_image):
+    slide = ArrayReader(slide_image, mpp=1000)  # 10 px/cm TIFF resolution tag
+    with pytest.raises(ValueError, match="MPP value was not provided"):
+        TilingPipeline().run(slide)
+
+
 def test_too_few_pyramid_levels_rejected(slide_image):
     slide = ArrayReader(slide_image, downsamples=(1, 4))
     with pytest.raises(ValueError, match="faulty magnification"):

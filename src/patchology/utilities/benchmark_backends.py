@@ -12,6 +12,7 @@ never reach the output::
 
 import json
 import multiprocessing as mp
+import queue as queue_module
 import statistics
 import string
 import sys
@@ -75,7 +76,14 @@ def time_backend(path: Path, backend: str, num_threads: int) -> dict:
             target=_run, args=(str(path), backend, num_threads, queue)
         )
         proc.start()
-        runs.append(queue.get())
+        while True:
+            try:
+                runs.append(queue.get(timeout=1))
+                break
+            except queue_module.Empty:
+                # A crashed run never puts a result; don't wait for it forever.
+                if not proc.is_alive():
+                    raise RuntimeError(f"{backend} run exited with code {proc.exitcode}")
         proc.join()
     # The reader falls back to the other backend if one fails; never report that as a win.
     if any(r["backend"] != backend for r in runs):
@@ -95,7 +103,12 @@ def main(paths: list[Path]) -> None:
         _warm_cache(path)  # once for both backends
         for backend in BACKENDS:
             for num_threads in THREADS:
-                r = time_backend(path, backend, num_threads)
+                try:
+                    r = time_backend(path, backend, num_threads)
+                except RuntimeError as e:
+                    r = {"slide": label, "backend": backend, "error": str(e)}
+                    print(json.dumps(r), flush=True)
+                    break  # more threads will not fix a crash
                 r["slide"], r["size_mb"] = label, round(path.stat().st_size / 1e6)
                 r["tiles_per_s"] = round(r["tiles"] / r["read"])
                 print(json.dumps(r), flush=True)

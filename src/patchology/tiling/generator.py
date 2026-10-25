@@ -64,6 +64,7 @@ class TileGenerator:
         self,
         slide: str | Path | SlideReader,
         backend: Backend = "openslide",
+        fallback: bool = True,
         tissue_mask: MaskSource | None = None,
         tiling: TilingConfig = TilingConfig(),
         tissue: TissueConfig = TissueConfig(),
@@ -79,6 +80,8 @@ class TileGenerator:
             slide: Slide path, or an open :class:`SlideReader` that the caller
                 keeps ownership of (it is not closed by :meth:`close`).
             backend: Preferred backend when ``slide`` is a path.
+            fallback: Try the other backend if ``backend`` cannot open the
+                slide. Set False to pin the decoder, e.g. for reproducible tiles.
             tissue_mask: Optional custom tissue mask, see :meth:`TilingPipeline.run`.
             roi: Only tile tissue inside this region: a GeoJSON file, a
                 directory holding one GeoJSON whose name contains the slide
@@ -102,7 +105,7 @@ class TileGenerator:
         if num_threads < 1:
             raise ValueError(f"num_threads must be at least 1, got {num_threads}")
         self._owns_slide = not isinstance(slide, SlideReader)
-        self._slide = open_slide(slide, backend) if self._owns_slide else slide
+        self._slide = open_slide(slide, backend, fallback=fallback) if self._owns_slide else slide
         self._pid: int | None = os.getpid()
         # How a worker process reopens the slide.
         self._slide_path, self._backend = self._slide.path, self._slide.backend

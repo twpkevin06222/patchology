@@ -116,3 +116,40 @@ def test_class_map_validation(slide: ArrayReader, gt):
         SegmentationTileGenerator(slide, gt, class_map={"class01": 0})
     with pytest.raises(ValueError, match="no object of classes"):
         SegmentationTileGenerator(slide, gt, class_map={"class01": 1})
+
+
+def test_roi_class_restricts_tiles_and_ignores_outside(slide: ArrayReader, tmp_path):
+    # ROI box half a tile off the 256 px grid, with a tumour spilling past its right edge.
+    path = _write_gt(
+        tmp_path,
+        [[_square(1152, 640, 2176, 1664)], [_square(1664, 1152, 2688, 1664)]],
+        classes=["roi", "tumor"],
+    )
+    edge = TilingConfig(tile_size=128, tile_mpp=1.0, tissue_overlap=0.1)  # keep edge tiles
+    gen = SegmentationTileGenerator(
+        slide, path, object_mask_overlap=0.0, class_map={"tumor": 1}, roi_class="roi", tiling=edge
+    )
+    items = list(gen)
+    assert items and gen.roi_polygons is not None and gen.classes == ["tumor"]
+    masks = [m for _, _, m in items]
+    assert set(np.unique(masks)) <= {0, 1, 255} and any((m == 255).any() for m in masks)
+    for (x, y), _, mask in items:
+        # Mask pixel (i, j) is level-0 (x + 2j, y + 2i); 2 px slack for fillPoly's boundary.
+        xs = np.nonzero(mask == 1)[1]
+        assert (x + 2 * xs <= 2176 + 2).all()  # tumour outside the ROI is never labelled
+        assert x < 2176 and y < 1664 and x + 256 > 1152 and y + 256 > 640  # tiles touch the ROI
+    # object_fraction counts labelled pixels only, not ignored ones.
+    np.testing.assert_allclose(gen.object_fraction, [(m == 1).mean() for m in masks])
+    assert gen.metadata()["ground_truth"]["ignore_index"] == 255
+
+
+def test_roi_class_validation(slide: ArrayReader, gt, tmp_path):
+    with pytest.raises(ValueError, match="no object of roi_class"):
+        SegmentationTileGenerator(slide, gt, roi_class="roi", tiling=CONFIG)
+    only_roi = _write_gt(tmp_path, [[_square(1024, 512, 2048, 1536)]], classes=["roi"])
+    with pytest.raises(ValueError, match="no ground truth"):
+        SegmentationTileGenerator(slide, only_roi, roi_class="roi", tiling=CONFIG)
+    with pytest.raises(ValueError, match="also a class_map label"):
+        SegmentationTileGenerator(slide, gt, roi_class="roi", class_map={"a": 255}, tiling=CONFIG)
+    with pytest.raises(ValueError, match="ignore_index must be"):
+        SegmentationTileGenerator(slide, gt, roi_class="roi", ignore_index=0, tiling=CONFIG)

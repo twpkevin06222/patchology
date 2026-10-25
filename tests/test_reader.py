@@ -50,6 +50,16 @@ def test_read_at_downsample_assembles_chunks(slide: ArrayReader):
     assert np.abs(whole.astype(int) - single).mean() < 1.0
 
 
+def test_read_at_downsample_bounds_level_reads(slide_image, monkeypatch):
+    flat = ArrayReader(slide_image, downsamples=(1,))  # no pyramid: every read is level 0
+    sizes = []
+    read = flat.read_region_rgb
+    monkeypatch.setattr(flat, "read_region_rgb", lambda *a: sizes.append(a[2]) or read(*a))
+    thumb = flat.read_at_downsample(8.0, chunk_size=128)
+    assert thumb.shape == (384, 512, 3)
+    assert max(max(s) for s in sizes) <= 128
+
+
 def test_thumbnail_keeps_aspect_ratio(slide: ArrayReader):
     assert slide.get_thumbnail((256, 256)).size == (256, 192)
 

@@ -227,13 +227,16 @@ class SlideReader(abc.ABC):
     def read_at_downsample(self, downsample: float, chunk_size: int = 2048) -> np.ndarray:
         """Read the whole slide at ``downsample`` as an ``(H, W, 3)`` uint8 array.
 
-        The image is assembled from chunks so memory stays bounded even when
-        the closest pyramid level is much larger than the output.
+        The image is assembled from chunks of at most ``chunk_size`` pixels a
+        side in the pyramid level that is read, so memory stays bounded even
+        when that level is much larger than the output.
         """
         width, height = self.dimensions
         out_w = max(1, round(width / downsample))
         out_h = max(1, round(height / downsample))
         out = np.empty((out_h, out_w, 3), dtype=np.uint8)
+        factor = downsample / self.level_downsamples[self._level_for_downsample(downsample)]
+        chunk_size = max(1, int(chunk_size / max(factor, 1.0)))
         for oy in range(0, out_h, chunk_size):
             for ox in range(0, out_w, chunk_size):
                 cw = min(chunk_size, out_w - ox)

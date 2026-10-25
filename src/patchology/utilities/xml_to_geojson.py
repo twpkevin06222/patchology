@@ -23,6 +23,10 @@ POLYGON_TYPES = {"Polygon", "Rectangle", "Spline"}
 POINT_TYPES = {"Dot", "PointSet"}
 
 
+def _number(text: str) -> float:
+    return float(text.replace(",", "."))
+
+
 def asap_to_geojson(xml_path: str | Path) -> dict:
     """Read an ASAP XML file into a GeoJSON FeatureCollection.
 
@@ -44,7 +48,8 @@ def asap_to_geojson(xml_path: str | Path) -> dict:
     for ann in root.iter("Annotation"):
         kind, name = ann.get("Type"), ann.get("Name")
         coords = sorted(ann.iter("Coordinate"), key=lambda c: int(c.get("Order", 0)))
-        points = [[float(c.get("X")), float(c.get("Y"))] for c in coords]
+        # Some ASAP exports use a locale decimal comma, e.g. X="28881,7012".
+        points = [[_number(c.get("X")), _number(c.get("Y"))] for c in coords]
         if kind in POLYGON_TYPES:
             if len(points) < 3:
                 logger.warning(

@@ -1,10 +1,5 @@
 """patchology: whole slide image tissue detection, artifact removal and tiling."""
 
-import logging
-
-# Library convention: emit nothing unless the application configures logging.
-logging.getLogger(__name__).addHandler(logging.NullHandler())
-
 from patchology.color import (
     REFERENCE_STAINS,
     ColorConfig,

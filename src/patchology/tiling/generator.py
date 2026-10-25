@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import logging
 import os
 from collections.abc import Collection, Iterator, Mapping
 from pathlib import Path
@@ -13,6 +12,7 @@ from types import TracebackType
 from typing import Self
 
 import numpy as np
+from loguru import logger
 from PIL import Image
 
 from patchology.color import ColorConfig, Stains
@@ -35,8 +35,6 @@ from patchology.tissue.roi import (
     rasterize_polygons,
     roi_matches_slide,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class TileGenerator:
@@ -133,9 +131,9 @@ class TileGenerator:
         width, height = self.dimensions
         tissue_mm2 = self.tissue_mask.area_fraction() * width * height * self.mpp**2 / 1e6
         logger.info(
-            "slide name: %s | slide dimensions: (%d, %d) | slide MPP: %.4f | "
-            "scanner: %s | level count: %d\n"
-            "generated tiles: %d | tissue area: %.2f mm^2",
+            "slide name: {} | slide dimensions: ({}, {}) | slide MPP: {:.4f} | "
+            "scanner: {} | level count: {}\n"
+            "generated tiles: {} | tissue area: {:.2f} mm^2",
             self.path.name,
             width,
             height,
@@ -412,7 +410,7 @@ class SegmentationTileGenerator(TileGenerator):
         )
         # (x0, y0, x1, y1) of each exterior ring, to skip polygons off a tile.
         self._bboxes = np.array([[*p[0].min(axis=0), *p[0].max(axis=0)] for p in self.polygons])
-        logger.info("loaded ground truth %s: %d polygon(s)", path.name, len(self.polygons))
+        logger.debug("loaded ground truth {}: {} polygon(s)", path.name, len(self.polygons))
         try:
             super()._run_pipeline()
         except Exception:
@@ -426,7 +424,7 @@ class SegmentationTileGenerator(TileGenerator):
     def _select_classes(self, path: Path, class_map: Mapping[str, int]) -> None:
         unmapped = sorted({str(c) for c in self.classes if c not in class_map})
         if unmapped:
-            logger.warning("%s: ignoring objects of unmapped classes %s", path.name, unmapped)
+            logger.warning("{}: ignoring objects of unmapped classes {}", path.name, unmapped)
         keep = [c in class_map for c in self.classes]
         if not any(keep):
             raise ValueError(f"{path.name} has no object of classes {sorted(class_map)}")
@@ -443,7 +441,7 @@ class SegmentationTileGenerator(TileGenerator):
         keep = fractions >= self.object_mask_overlap
         self.object_fraction = fractions[keep]
         logger.info(
-            "%s: kept %d of %d tissue tiles with >= %.0f%% ground truth",
+            "{}: kept {} of {} tissue tiles with >= {:.0f}% ground truth",
             self.path.name,
             int(keep.sum()),
             len(result),
@@ -451,7 +449,7 @@ class SegmentationTileGenerator(TileGenerator):
         )
         if not keep.any():
             logger.warning(
-                "%s: no tile overlaps the ground truth by %.0f%%; lower object_mask_overlap",
+                "{}: no tile overlaps the ground truth by {:.0f}%; lower object_mask_overlap",
                 self.path.name,
                 100 * self.object_mask_overlap,
             )

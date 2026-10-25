@@ -108,10 +108,16 @@ def test_tissue_overlap_threshold(slide: ArrayReader, grid):
 
 def test_missing_mpp_requires_override(slide_image):
     slide = ArrayReader(slide_image, mpp=None)
-    with pytest.raises(ValueError, match="slide_mpp"):
+    with pytest.raises(ValueError, match="MPP value was not provided"):
         TilingPipeline().run(slide)
     result = TilingPipeline(tiling=TilingConfig(slide_mpp=0.5)).run(slide)
     assert result.slide_mpp == 0.5
+
+
+def test_too_few_pyramid_levels_rejected(slide_image):
+    slide = ArrayReader(slide_image, downsamples=(1, 4))
+    with pytest.raises(ValueError, match="faulty magnification"):
+        TilingPipeline().run(slide)
 
 
 def test_tile_fractions_exact():

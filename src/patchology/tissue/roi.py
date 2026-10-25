@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 from collections.abc import Collection, Sequence
 from pathlib import Path
 
 import cv2
 import numpy as np
+from loguru import logger
 
 from patchology.tissue.mask import SlideMask
-
-logger = logging.getLogger(__name__)
 
 # Level-0 pixels per ROI mask pixel; 16 is ~4 um at 0.25 mpp.
 ROI_DOWNSAMPLE = 16.0
@@ -85,7 +83,7 @@ def load_classified_polygons(path: str | Path) -> tuple[list[Polygon], list[str 
         elif kind == "MultiPolygon":
             parts = geometry["coordinates"]
         else:
-            logger.warning("%s: skipping %s geometry, only polygons are used", path.name, kind)
+            logger.warning("{}: skipping {} geometry, only polygons are used", path.name, kind)
             continue
         polygons += [[np.asarray(r, float)[:, :2] for r in rings] for rings in parts]
         classes += [name] * len(parts)
@@ -145,7 +143,7 @@ def load_roi(
     mask = rasterize_polygons(polygons, shape, (shape[1] / width, shape[0] / height))
     roi = SlideMask.from_array(mask, slide_dimensions)
     logger.info(
-        "loaded ROI %s: %d polygon(s), %.1f%% of slide",
+        "loaded ROI {}: {} polygon(s), {:.1f}% of slide",
         Path(path).name,
         len(polygons),
         100 * roi.area_fraction(),

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import abc
 import functools
-import logging
 from collections.abc import Mapping
 from pathlib import Path
 from types import TracebackType
@@ -24,11 +23,10 @@ from typing import Self
 
 import cv2
 import numpy as np
+from loguru import logger
 from PIL import Image, ImageCms
 
 from patchology.color import apply_transform, icc_to_srgb
-
-logger = logging.getLogger(__name__)
 
 # Property names, identical to the constants exported by openslide-python.
 PROPERTY_NAME_COMMENT = "openslide.comment"
@@ -165,17 +163,17 @@ class SlideReader(abc.ABC):
     def _icc_transform(self) -> ImageCms.ImageCmsTransform | None:
         profile = self.icc_profile
         if profile is None:
-            logger.info("%s has no ICC profile; colours are left as stored", self._path.name)
+            logger.debug("{} has no ICC profile; colours are left as stored", self._path.name)
             return None
         try:
             transform = icc_to_srgb(profile)
         except (ImageCms.PyCMSError, OSError) as e:
             logger.warning(
-                "%s has an unusable ICC profile, skipping calibration: %s", self._path, e
+                "{} has an unusable ICC profile, skipping calibration: {}", self._path, e
             )
             return None
-        logger.info(
-            "%s: applying embedded ICC profile (%d bytes) -> sRGB", self._path.name, len(profile)
+        logger.debug(
+            "{}: applying embedded ICC profile ({} bytes) -> sRGB", self._path.name, len(profile)
         )
         return transform
 
@@ -227,13 +225,16 @@ class SlideReader(abc.ABC):
     def read_at_downsample(self, downsample: float, chunk_size: int = 2048) -> np.ndarray:
         """Read the whole slide at ``downsample`` as an ``(H, W, 3)`` uint8 array.
 
-        The image is assembled from chunks so memory stays bounded even when
-        the closest pyramid level is much larger than the output.
+        The image is assembled from chunks of at most ``chunk_size`` pixels a
+        side in the pyramid level that is read, so memory stays bounded even
+        when that level is much larger than the output.
         """
         width, height = self.dimensions
         out_w = max(1, round(width / downsample))
         out_h = max(1, round(height / downsample))
         out = np.empty((out_h, out_w, 3), dtype=np.uint8)
+        factor = downsample / self.level_downsamples[self._level_for_downsample(downsample)]
+        chunk_size = max(1, int(chunk_size / max(factor, 1.0)))
         for oy in range(0, out_h, chunk_size):
             for ox in range(0, out_w, chunk_size):
                 cw = min(chunk_size, out_w - ox)

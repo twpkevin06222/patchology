@@ -86,6 +86,10 @@ UPSAMPLE_TOLERANCE = 0.05
 # which can take tens of GB of RAM on a whole slide.
 MIN_PYRAMID_LEVELS = 3
 
+# Coarsest level-0 resolution a slide scanner produces (a 2x scan is ~5 mpp). Larger
+# values are bogus TIFF resolution tags and make the tissue thumbnail larger than the slide.
+MAX_SLIDE_MPP = 10.0
+
 
 @dataclass(frozen=True)
 class TilingConfig:
@@ -487,6 +491,11 @@ class TilingPipeline:
                 "set TilingConfig.slide_mpp"
             )
         mpp_x, mpp_y = mpp
+        if mpp_x > MAX_SLIDE_MPP:
+            raise ValueError(
+                f"MPP value was not provided: {slide.path} reports {mpp_x:g} mpp, which no "
+                f"scanner produces (max {MAX_SLIDE_MPP:g}); set TilingConfig.slide_mpp"
+            )
         if abs(mpp_x - mpp_y) / mpp_x > 0.01:
             logger.warning(
                 "{} has anisotropic pixels ({:g} x {:g} mpp); using x", slide.path, mpp_x, mpp_y

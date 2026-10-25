@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import json
-import logging
 import os
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
@@ -14,6 +13,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from loguru import logger
 from PIL import Image
 
 from patchology.color import ColorConfig, Stains, macenko_normalize
@@ -23,8 +23,6 @@ from patchology.tissue.artifacts import ArtifactConfig, detect_blur, detect_pen_
 from patchology.tissue.detection import TissueConfig, detect_tissue
 from patchology.tissue.mask import MaskSource, SlideMask, load_mask
 from patchology.visualize import visualize_result
-
-logger = logging.getLogger(__name__)
 
 NUM_THREADS_ENV = "PATCHOLOGY_NUM_THREADS"
 
@@ -225,7 +223,7 @@ class TilingResult:
             return path
 
         paths = list(ordered_map(save, range(len(self)), num_threads))
-        logger.info("%s: saved %d tiles to %s", self.slide_path.name, len(paths), out_dir)
+        logger.info("{}: saved {} tiles to {}", self.slide_path.name, len(paths), out_dir)
         return paths
 
     def metadata(self) -> dict:
@@ -266,7 +264,7 @@ class TilingResult:
         (out_dir / "metadata.json").write_text(json.dumps(self.metadata(), indent=2))
         self.tissue_mask.save(out_dir / "tissue_mask.png")
         self.overlay().save(out_dir / "overlay.png")
-        logger.info("%s: saved tiling result to %s", self.slide_path.name, out_dir)
+        logger.info("{}: saved tiling result to {}", self.slide_path.name, out_dir)
 
     def overlay(self, **kwargs) -> Image.Image:
         """Thumbnail with tissue in green, artifacts in red and tiles in blue.
@@ -317,8 +315,8 @@ class TilingPipeline:
         """
         if self.color.stain_normalization is not None:
             target = self.color.target_stains  # fail on a bad reference before any reads
-            logger.info(
-                "%s: stain target H %s, E %s, max concentrations %s",
+            logger.debug(
+                "{}: stain target H {}, E {}, max concentrations {}",
                 slide.path.name,
                 np.round(target.matrix[:, 0], 3).tolist(),
                 np.round(target.matrix[:, 1], 3).tolist(),
@@ -334,15 +332,15 @@ class TilingPipeline:
         scale = cfg.tile_mpp / slide_mpp
         if scale < 1 - UPSAMPLE_TOLERANCE:
             logger.warning(
-                "tile_mpp %.4g is finer than the slide's %.4g mpp; tiles will be upsampled",
+                "tile_mpp {:.4g} is finer than the slide's {:.4g} mpp; tiles will be upsampled",
                 cfg.tile_mpp,
                 slide_mpp,
             )
         level0_tile = cfg.tile_size * scale
-        logger.info(
-            "%s: slide %d x %d px at %.4g mpp (%s, %d levels); "
-            "tile %d px at %.4g mpp = %.1f level-0 px (downsample %.3g), "
-            "%s grid, tile_overlap %.2f, tissue_overlap %.2f",
+        logger.debug(
+            "{}: slide {} x {} px at {:.4g} mpp ({}, {} levels); "
+            "tile {} px at {:.4g} mpp = {:.1f} level-0 px (downsample {:.3g}), "
+            "{} grid, tile_overlap {:.2f}, tissue_overlap {:.2f}",
             slide.path.name,
             *slide.dimensions,
             slide_mpp,
@@ -364,7 +362,7 @@ class TilingPipeline:
             keep &= fractions > 0
         num_kept = int(keep.sum())
         logger.info(
-            "%s: generated %d tiles (%d grid candidates, %.1f%% tissue after artifact removal)",
+            "{}: generated {} tiles ({} grid candidates, {:.1f}% tissue after artifact removal)",
             slide.path.name,
             num_kept,
             len(coords),
@@ -372,7 +370,7 @@ class TilingPipeline:
         )
         if num_kept == 0:
             logger.warning(
-                "%s: no tiles kept; check the tissue mask or lower tissue_overlap (%.2f)",
+                "{}: no tiles kept; check the tissue mask or lower tissue_overlap ({:.2f})",
                 slide.path.name,
                 cfg.tissue_overlap,
             )
@@ -428,7 +426,7 @@ class TilingPipeline:
             tissue = SlideMask.from_array(detected, slide.dimensions)
 
         logger.debug(
-            "%s: thumbnail %d x %d px at %.4g mpp, %s tissue %.1f%%",
+            "{}: thumbnail {} x {} px at {:.4g} mpp, {} tissue {:.1f}%",
             slide.path.name,
             thumbnail.shape[1],
             thumbnail.shape[0],
@@ -441,10 +439,10 @@ class TilingPipeline:
         if self.artifacts.pen:
             pen = detect_pen_marks(thumbnail, thumb_mpp, self.artifacts)
             artifacts = SlideMask.from_array(pen, slide.dimensions)
-            logger.debug("%s: pen marks %.1f%%", slide.path.name, 100 * artifacts.area_fraction())
+            logger.debug("{}: pen marks {:.1f}%", slide.path.name, 100 * artifacts.area_fraction())
         if self.artifacts.blur:
             blur = detect_blur(slide, tissue, slide_mpp, self.artifacts)
-            logger.debug("%s: blurred %.1f%%", slide.path.name, 100 * blur.area_fraction())
+            logger.debug("{}: blurred {:.1f}%", slide.path.name, 100 * blur.area_fraction())
             if artifacts is None:
                 artifacts = SlideMask(blur.like(tissue), tissue.downsample)
             else:
@@ -469,7 +467,7 @@ class TilingPipeline:
         except ValueError as e:
             raise ValueError(f"{slide.path}: cannot estimate stains: {e}") from e
         logger.info(
-            "%s: macenko stains from %d tiles: H %s, E %s, max concentrations %s",
+            "{}: macenko stains from {} tiles: H {}, E {}, max concentrations {}",
             slide.path.name,
             count,
             np.round(stains.matrix[:, 0], 3).tolist(),
@@ -491,7 +489,7 @@ class TilingPipeline:
         mpp_x, mpp_y = mpp
         if abs(mpp_x - mpp_y) / mpp_x > 0.01:
             logger.warning(
-                "%s has anisotropic pixels (%g x %g mpp); using x", slide.path, mpp_x, mpp_y
+                "{} has anisotropic pixels ({:g} x {:g} mpp); using x", slide.path, mpp_x, mpp_y
             )
         return mpp_x
 

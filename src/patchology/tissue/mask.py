@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from loguru import logger
 from PIL import Image
-
-logger = logging.getLogger(__name__)
 
 # Relative difference in aspect ratio between a custom mask and the slide
 # above which we warn that the mask probably does not match the slide.
@@ -46,7 +44,7 @@ class SlideMask:
         mask_ratio = mask_w / mask_h
         if abs(mask_ratio - slide_ratio) / slide_ratio > ASPECT_RATIO_TOLERANCE:
             logger.warning(
-                "mask aspect ratio %.3f differs from slide aspect ratio %.3f; "
+                "mask aspect ratio {:.3f} differs from slide aspect ratio {:.3f}; "
                 "the mask is stretched to cover the whole slide",
                 mask_ratio,
                 slide_ratio,
@@ -125,7 +123,7 @@ def load_mask(source: MaskSource, slide_dimensions: tuple[int, int]) -> SlideMas
                     array = np.asarray(image.convert("L"))
         except (OSError, ValueError) as e:
             raise ValueError(f"cannot read tissue mask {path}: {e}") from e
-        logger.info("loaded tissue mask %s (%d x %d px)", path, array.shape[1], array.shape[0])
+        logger.debug("loaded tissue mask {} ({} x {} px)", path, array.shape[1], array.shape[0])
         return SlideMask.from_array(array, slide_dimensions)
     if isinstance(source, Image.Image):
         return SlideMask.from_array(np.asarray(source.convert("L")), slide_dimensions)

@@ -6,15 +6,15 @@ backend and falls back to the other one if the slide cannot be opened.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Literal
+
+from loguru import logger
 
 from patchology.reader.base import SlideOpenError, SlideReader
 
 __all__ = ["Backend", "SlideOpenError", "SlideReader", "open_slide"]
 
-logger = logging.getLogger(__name__)
 
 Backend = Literal["openslide", "fastslide"]
 BACKENDS: tuple[Backend, ...] = ("openslide", "fastslide")
@@ -53,8 +53,8 @@ def open_slide(
             errors.append(f"{name}: {e}")
             continue
         if name != backend:
-            logger.warning("%s could not open %s, fell back to %s", backend, path, name)
-        logger.info("opened %s with %s", path, name)
+            logger.warning("{} could not open {}, fell back to {}", backend, path, name)
+        logger.debug("opened {} with {}", path, name)
         return reader
     raise SlideOpenError(f"could not open {path}:\n  " + "\n  ".join(errors))
 

@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+from loguru import logger
 from PIL import Image
 
 from patchology.reader.base import SlideReader, level_properties
@@ -14,6 +15,14 @@ from patchology.reader.base import SlideReader, level_properties
 BACKGROUND = (242, 242, 240)
 EOSIN = np.array([225, 140, 190], dtype=np.float32)
 HEMATOXYLIN = np.array([90, 50, 140], dtype=np.float32)
+
+
+@pytest.fixture
+def caplog(caplog):
+    """Route loguru records into pytest's caplog."""
+    handler_id = logger.add(caplog.handler, format="{message}", level=0)
+    yield caplog
+    logger.remove(handler_id)
 
 
 class ArrayReader(SlideReader):

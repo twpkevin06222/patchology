@@ -84,6 +84,10 @@ def ordered_map[T, R](
 # before warning about upsampling, so 0.5 mpp on a 0.5026 mpp scan is quiet.
 UPSAMPLE_TOLERANCE = 0.05
 
+# Fewer levels than this means the thumbnail is read from (near) full resolution,
+# which can take tens of GB of RAM on a whole slide.
+MIN_PYRAMID_LEVELS = 3
+
 
 @dataclass(frozen=True)
 class TilingConfig:
@@ -401,7 +405,16 @@ class TilingPipeline:
 
         ``tissue`` is the detected (or custom) tissue before artifact removal;
         ``artifacts`` is None when pen and blur removal are both disabled.
+
+        Raises:
+            ValueError: The slide has fewer than ``MIN_PYRAMID_LEVELS`` levels.
         """
+        if slide.level_count < MIN_PYRAMID_LEVELS:
+            raise ValueError(
+                f"{slide.path} has a faulty magnification pyramid: {slide.level_count} "
+                f"level(s), at least {MIN_PYRAMID_LEVELS} are needed to tile without "
+                "running out of memory; re-save it as a pyramidal slide"
+            )
         slide_mpp = slide_mpp or self.slide_mpp(slide)
         thumbnail = slide.read_at_downsample(self.tissue.thumbnail_mpp / slide_mpp)
         if self.color.icc:
@@ -472,7 +485,8 @@ class TilingPipeline:
         mpp = slide.mpp
         if mpp is None:
             raise ValueError(
-                f"{slide.path} does not report its resolution; set TilingConfig.slide_mpp"
+                f"MPP value was not provided: {slide.path} does not report its resolution; "
+                "set TilingConfig.slide_mpp"
             )
         mpp_x, mpp_y = mpp
         if abs(mpp_x - mpp_y) / mpp_x > 0.01:

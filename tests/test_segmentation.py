@@ -153,3 +153,32 @@ def test_roi_class_validation(slide: ArrayReader, gt, tmp_path):
         SegmentationTileGenerator(slide, gt, roi_class="roi", class_map={"a": 255}, tiling=CONFIG)
     with pytest.raises(ValueError, match="ignore_index must be"):
         SegmentationTileGenerator(slide, gt, roi_class="roi", ignore_index=0, tiling=CONFIG)
+
+
+def test_overlay_draws_ground_truth_per_label(slide: ArrayReader, tmp_path):
+    gt = _write_gt(
+        tmp_path,
+        [[_square(1536, 1024, 2048, 1536)], [_square(2304, 1024, 2816, 1536)]],
+        classes=["tumour", "stroma"],
+    )
+    gen = SegmentationTileGenerator(
+        slide, gt, class_map={"tumour": 1, "stroma": 2}, object_mask_overlap=0.0, tiling=CONFIG
+    )
+    plain = np.asarray(gen.overlay(ground_truth=False, tiles=False, tissue=False))
+    auto = np.asarray(gen.overlay(tiles=False, tissue=False))
+    custom = np.asarray(
+        gen.overlay(tiles=False, tissue=False, label_colors={1: (255, 0, 0), 2: (0, 0, 255)})
+    )
+    # Thumbnail pixel at the centre of each square, level-0 (1792, 1280) and (2560, 1280).
+    dx, dy = 4096 / plain.shape[1], 3072 / plain.shape[0]
+    tumour, stroma = (round(1280 / dy), round(1792 / dx)), (round(1280 / dy), round(2560 / dx))
+    assert (auto[tumour] != plain[tumour]).any() and (auto[tumour] != auto[stroma]).any()
+    assert custom[tumour][0] > custom[tumour][2] and custom[stroma][2] > custom[stroma][0]
+
+
+def test_make_palette_distinct_colours():
+    from patchology.visualize import make_palette
+
+    for n in (3, 10, 40):
+        palette = make_palette(range(1, n + 1))
+        assert len(palette) == n and len(set(palette.values())) == n

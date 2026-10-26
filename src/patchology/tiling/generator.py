@@ -519,6 +519,21 @@ class SegmentationTileGenerator(TileGenerator):
         """``(tile, mask)`` whose level-0 top-left corner is ``(x, y)``."""
         return super().get_tile_at(x, y), self._mask(int(x), int(y), self.result)
 
+    def overlay(
+        self,
+        ground_truth: bool = True,
+        label_colors: Mapping[int, tuple[int, int, int]] | None = None,
+        **kwargs,
+    ) -> Image.Image:
+        """Thumbnail with tissue, ground truth (one colour per label) and tiles.
+
+        ``label_colors`` maps a label to RGB; by default each label gets a
+        distinct colour. Other keyword arguments are as for :meth:`TileGenerator.overlay`.
+        """
+        if ground_truth:
+            kwargs["ground_truth"] = (self.polygons, self.labels)
+        return super().overlay(label_colors=label_colors, **kwargs)
+
     def metadata(self) -> dict:
         meta = super().metadata()
         meta["ground_truth"] = {

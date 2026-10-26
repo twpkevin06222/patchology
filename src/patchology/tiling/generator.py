@@ -525,13 +525,16 @@ class SegmentationTileGenerator(TileGenerator):
         label_colors: Mapping[int, tuple[int, int, int]] | None = None,
         **kwargs,
     ) -> Image.Image:
-        """Thumbnail with tissue, ground truth (one colour per label) and tiles.
+        """Thumbnail with ground truth (one colour per label) and tiles.
 
         ``label_colors`` maps a label to RGB; by default each label gets a
-        distinct colour. Other keyword arguments are as for :meth:`TileGenerator.overlay`.
+        distinct colour. The tissue tint is off unless ``tissue=True``, since it
+        hides the label colours. Other keyword arguments are as for
+        :meth:`TileGenerator.overlay`.
         """
         if ground_truth:
             kwargs["ground_truth"] = (self.polygons, self.labels)
+            kwargs.setdefault("tissue", False)
         return super().overlay(label_colors=label_colors, **kwargs)
 
     def metadata(self) -> dict:

@@ -173,6 +173,7 @@ def test_overlay_draws_ground_truth_per_label(slide: ArrayReader, tmp_path):
     dx, dy = 4096 / plain.shape[1], 3072 / plain.shape[0]
     tumour, stroma = (round(1280 / dy), round(1792 / dx)), (round(1280 / dy), round(2560 / dx))
     assert (auto[tumour] != plain[tumour]).any() and (auto[tumour] != auto[stroma]).any()
+    assert (np.asarray(gen.overlay(tiles=False)) == auto).all()  # tissue tint off by default
     assert custom[tumour][0] > custom[tumour][2] and custom[stroma][2] > custom[stroma][0]
 
 

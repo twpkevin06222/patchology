@@ -6,6 +6,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import os
+import time
 from collections.abc import Collection, Iterator, Mapping
 from pathlib import Path
 from types import TracebackType
@@ -132,20 +133,25 @@ class TileGenerator:
 
     def _run_pipeline(self) -> None:
         """Compute :attr:`result` and log a summary of the slide and its tiles."""
+        start = time.perf_counter()
+        num_tiles = len(self)  # computes result: tissue detection and tile selection
+        elapsed = time.perf_counter() - start
         width, height = self.dimensions
         tissue_mm2 = self.tissue_mask.area_fraction() * width * height * self.mpp**2 / 1e6
         logger.info(
             "slide name: {} | slide dimensions: ({}, {}) | slide MPP: {:.4f} | "
             "scanner: {} | level count: {}\n"
-            "generated tiles: {} | tissue area: {:.2f} mm^2",
+            "generated tiles: {} | tissue area: {:.2f} mm^2\n"
+            "tiling time: {:.2f} s",
             self.path.name,
             width,
             height,
             self.mpp,
             self.properties.get(PROPERTY_NAME_VENDOR, "unknown"),
             self.level_count,
-            len(self),
+            num_tiles,
             tissue_mm2,
+            elapsed,
         )
 
     def _resolve_roi(self, roi: Path, check_name: bool) -> Path:

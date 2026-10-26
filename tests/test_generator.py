@@ -30,6 +30,7 @@ def test_init_runs_pipeline_and_logs_summary(slide: ArrayReader, caplog):
     assert gen.tissue_mask.area_fraction() > 0
     summary = caplog.records[-1].getMessage()
     assert "scanner: synthetic" in summary and f"generated tiles: {len(gen)}" in summary
+    assert "tiling time: " in summary
     assert "slide MPP: 0.5000" in summary and "mm^2" in summary
 
 

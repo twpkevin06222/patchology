@@ -7,6 +7,7 @@ from patchology.color import (
     load_stains,
     macenko_normalize,
 )
+from patchology.log import configure_logging
 from patchology.reader import Backend, SlideOpenError, SlideReader, open_slide
 from patchology.tiling import (
     SegmentationTileGenerator,
@@ -32,6 +33,8 @@ from patchology.visualize import (
     visualize_result,
     visualize_slide,
 )
+
+configure_logging("patchology")
 
 __all__ = [
     "REFERENCE_STAINS",

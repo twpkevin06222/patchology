@@ -359,6 +359,19 @@ your own figures.
 ![Tiling overlays, 20% overlap](src/patchology/figures/overlays_overlap20.png)
 *Same slide with `tile_overlap=0.2`.*
 
+## Logging
+
+Logs (via loguru) show `INFO` and above by default. Override before running:
+
+```bash
+export PATCHOLOGY_LOG_LEVEL=DEBUG   # or ALL for everything, WARNING for less
+```
+
+Each library in the family reads its own `<PACKAGE>_LOG_LEVEL` (e.g.
+`PATHOTRAIN_LOG_LEVEL`), so levels are set per library in any import order. If
+your application configures loguru itself (removes the default handler before
+importing patchology), that setup is left untouched.
+
 ## Development
 
 ```bash

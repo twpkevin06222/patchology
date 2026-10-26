@@ -5,7 +5,13 @@
 </p>
 
 Whole slide image (WSI) tiling: tissue detection, artifact removal and square
-or hexagonal tile grids, on top of OpenSlide or FastSlide.
+or hexagonal tile grids, on top of OpenSlide or FastSlide. 
+
+Many excellent tools already tile WSIs, but most are part of larger frameworks that are heavy to install and hard to navigate when all you need is tiling. patchology is a lightweight, standalone library focused on two things: **fast tiling** and **broad WSI format support**. 
+
+> [!WARNING]
+> For research use only. patchology is not a medical device and is not
+> validated for clinical diagnosis.
 
 ## Install
 

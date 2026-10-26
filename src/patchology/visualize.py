@@ -16,8 +16,10 @@ Tiles saved earlier can be shown without rerunning the pipeline::
 
 from __future__ import annotations
 
+import colorsys
 import json
 import math
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -27,6 +29,7 @@ from PIL import Image
 
 from patchology.reader import SlideReader
 from patchology.tissue.mask import MaskSource, SlideMask, load_mask
+from patchology.tissue.roi import Polygon, rasterize_polygons
 
 if TYPE_CHECKING:
     from patchology.tiling.generator import TileGenerator
@@ -40,6 +43,59 @@ ARTIFACT_COLOR: Color = (230, 0, 0)
 TILE_COLOR: Color = (0, 0, 255)
 HEX_TILE_COLOR: Color = (0, 0, 0)
 GEOJSON_TILE_COLOR: Color = (0, 0, 0)
+
+# matplotlib's tab10, used for up to 10 ground-truth labels.
+TAB10: list[Color] = [
+    (31, 119, 180), (255, 127, 14), (44, 160, 44), (214, 39, 40), (148, 103, 189),
+    (140, 86, 75), (227, 119, 194), (127, 127, 127), (188, 189, 34), (23, 190, 207),
+]  # fmt: skip
+
+
+def make_palette(labels: Sequence[int]) -> dict[int, Color]:
+    """A distinct colour per label: tab10 for up to 10 labels, else golden-ratio spaced hues."""
+    labels = sorted(set(labels))
+    if len(labels) <= len(TAB10):
+        return dict(zip(labels, TAB10))
+    # Golden-ratio steps put consecutive labels far apart on the colour wheel.
+    hues = [colorsys.hsv_to_rgb(i * 0.618034 % 1, 0.9, 0.9) for i in range(len(labels))]
+    return {label: tuple(round(c * 255) for c in rgb) for label, rgb in zip(labels, hues)}
+
+
+def draw_labels(
+    image: np.ndarray,
+    downsample: tuple[float, float],
+    polygons: list[Polygon],
+    labels: Sequence[int],
+    colors: Mapping[int, Color] | None = None,
+    alpha: float = 0.5,
+    outline: int = 2,
+) -> np.ndarray:
+    """Tint each level-0 polygon in its label's colour and outline it.
+
+    Args:
+        image: ``(H, W, 3)`` uint8 RGB thumbnail; not modified.
+        downsample: ``(x, y)`` level-0 pixels per ``image`` pixel.
+        polygons: Level-0 polygons, as loaded from GeoJSON.
+        labels: Label of each polygon.
+        colors: RGB colour per label; :func:`make_palette` by default.
+        alpha: Tint opacity in [0, 1].
+        outline: Contour thickness in pixels; 0 draws only the tint.
+    """
+    colors = colors or make_palette(labels)
+    scale = (1 / downsample[0], 1 / downsample[1])
+    out = image.copy()
+    for label in sorted(set(labels)):
+        chosen = [p for p, lab in zip(polygons, labels, strict=True) if lab == label]
+        region = rasterize_polygons(chosen, out.shape[:2], scale)
+        if alpha > 0:
+            tinted = (
+                out[region > 0].astype(np.float32) * (1 - alpha) + np.array(colors[label]) * alpha
+            )
+            out[region > 0] = tinted.round().astype(np.uint8)
+        if outline > 0:
+            contours, _ = cv2.findContours(region, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(out, contours, -1, colors[label], outline)
+    return out
 
 
 def draw_mask(
@@ -141,11 +197,14 @@ def render_overlay(
     tile_thickness: int = 1,
     tile_shape: TileShape = "square",
     tile_color: Color | None = None,
+    ground_truth: tuple[list[Polygon], Sequence[int]] | None = None,
+    label_colors: Mapping[int, Color] | None = None,
 ) -> Image.Image:
-    """Draw any combination of masks and tiles over ``thumbnail``.
+    """Draw any combination of masks, ground truth and tiles over ``thumbnail``.
 
     Tiles are drawn in ``tile_color``, by default blue for squares and black
-    for hexagons.
+    for hexagons. ``ground_truth`` is ``(polygons, labels)`` drawn with
+    :func:`draw_labels` in ``label_colors``.
 
     ``thumbnail`` must cover the whole slide. If ``max_size`` is given it is
     first resized so its longer side is ``max_size`` pixels, which makes small
@@ -161,6 +220,8 @@ def render_overlay(
         image = draw_mask(image, downsample, tissue_mask, TISSUE_COLOR, mask_alpha)
     if artifact_mask is not None:
         image = draw_mask(image, downsample, artifact_mask, ARTIFACT_COLOR, max(mask_alpha, 0.5))
+    if ground_truth is not None:
+        image = draw_labels(image, downsample, *ground_truth, label_colors)
     if coords is not None:
         if tile_size is None:
             raise ValueError("tile_size (in level-0 pixels) is required to draw coords")
@@ -227,6 +288,8 @@ def visualize_result(
     tile_thickness: int = 1,
     tile_shape: TileShape | None = None,
     tile_color: Color | None = None,
+    ground_truth: tuple[list[Polygon], Sequence[int]] | None = None,
+    label_colors: Mapping[int, Color] | None = None,
 ) -> Image.Image:
     """Overlay a :class:`TilingResult`'s masks and selected tiles on its thumbnail.
 
@@ -244,6 +307,9 @@ def visualize_result(
         tile_shape: ``"square"`` or ``"hex"`` outlines; defaults to the
             result's grid type.
         tile_color: Outline colour; blue for squares, black for hexagons.
+        ground_truth: ``(polygons, labels)`` to draw, e.g. from a
+            :class:`SegmentationTileGenerator`.
+        label_colors: RGB colour per label; :func:`make_palette` by default.
     """
     thumbnail = result.thumbnail
     if slide is not None:
@@ -261,6 +327,8 @@ def visualize_result(
         tile_thickness=tile_thickness,
         tile_shape=tile_shape or result.config.grid,
         tile_color=tile_color,
+        ground_truth=ground_truth,
+        label_colors=label_colors,
     )
 
 

@@ -15,7 +15,9 @@ Differences from FastSlide's native API that this adapter hides:
 
 from __future__ import annotations
 
+import functools
 import math
+import os
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
@@ -23,6 +25,7 @@ import fastslide
 import numpy as np
 from PIL import Image
 
+from patchology.reader import base
 from patchology.reader.base import (
     PROPERTY_NAME_BOUNDS_HEIGHT,
     PROPERTY_NAME_BOUNDS_WIDTH,
@@ -38,10 +41,14 @@ from patchology.reader.base import (
     level_properties,
 )
 
-# Per-slide LRU cache of decoded tiles, as OpenSlide has by default: neighbouring
-# tiles share source tiles (~35% hits without overlap, ~75% at 50%). 64 MB is as
-# fast as larger caches; FastSlide's global cache would hold up to 1 GB.
-TILE_CACHE_BYTES = 64 << 20
+
+# LRU cache of decoded tiles: neighbouring tiles share source tiles (~35% hits
+# without overlap, ~75% at 50%), and 64 MB was already as fast as larger caches for
+# one slide. Shared by all slides in a process, sized by base.TILE_CACHE_BYTES.
+@functools.cache
+def _shared_cache(pid: int) -> fastslide.CacheManager:
+    # Keyed by pid: a forked worker must not use the parent's cache (or its lock).
+    return fastslide.CacheManager.create(base.TILE_CACHE_BYTES)
 
 
 class FastSlideReader(SlideReader):
@@ -50,7 +57,9 @@ class FastSlideReader(SlideReader):
     def __init__(self, path: str | Path) -> None:
         super().__init__(path)
         try:
-            slide = fastslide.FastSlide.from_file_path(str(self._path), cache=TILE_CACHE_BYTES)
+            slide = fastslide.FastSlide.from_file_path(
+                str(self._path), cache=_shared_cache(os.getpid())
+            )
         except RuntimeError as e:
             raise SlideOpenError(f"FastSlide cannot open {self._path}: {e}") from e
         # FastSlide may hand back an unusable object for files it fails to

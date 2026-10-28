@@ -115,6 +115,7 @@ class TileGenerator:
             tiling=tiling, tissue=tissue, artifacts=artifacts, color=color
         )
         self._tissue_mask = tissue_mask
+        self._overviews_released = False
         self.num_threads = num_threads
         self.roi_path: Path | None = None
         self.roi: SlideMask | None = None
@@ -290,16 +291,39 @@ class TileGenerator:
     @property
     def tissue_mask(self) -> SlideMask:
         """Tissue after artifact removal."""
-        return self.result.tissue_mask
+        return self._overview("tissue_mask")
 
     @property
     def artifact_mask(self) -> SlideMask | None:
-        return self.result.artifact_mask
+        return self._overview("artifact_mask")
 
     @property
     def thumbnail(self) -> np.ndarray:
         """ICC-calibrated (if enabled) RGB thumbnail on the tissue mask's grid."""
-        return self.result.thumbnail
+        return self._overview("thumbnail")
+
+    def release_overviews(self) -> None:
+        """Free the thumbnail and the tissue, artifact and ROI masks (~20-60 MB a slide).
+
+        Only tile selection needs them, so a dataset holding many slides can drop
+        them once tiling is done. Tiles and masks read the same afterwards, and
+        ``overlay(slide=...)`` still draws tiles and ground truth on a fresh
+        thumbnail. ``thumbnail``, ``tissue_mask``, ``artifact_mask``, ``save()``
+        and tissue or artifact overlays raise ``RuntimeError``.
+        """
+        self.result = dataclasses.replace(
+            self.result, thumbnail=None, tissue_mask=None, artifact_mask=None
+        )
+        self.roi = self._tissue_mask = None
+        self._overviews_released = True
+
+    def _overview(self, name: str):
+        if self._overviews_released:
+            raise RuntimeError(
+                f"{name} was freed by release_overviews(); build a new generator for "
+                "this slide to see it"
+            )
+        return getattr(self.result, name)
 
     @property
     def source_stains(self) -> Stains | None:
@@ -310,10 +334,15 @@ class TileGenerator:
         return self.result.metadata()
 
     def overlay(self, **kwargs) -> Image.Image:
+        if self._overviews_released:
+            if kwargs.get("slide") is None or kwargs.get("tissue") or kwargs.get("artifacts"):
+                self._overview("thumbnail and tissue/artifact masks")  # raises
+            kwargs.update(tissue=False, artifacts=False)
         return self.result.overlay(**kwargs)
 
     def save(self, out_dir: str | Path) -> None:
         """Write ``tiles.csv``, ``metadata.json``, ``tissue_mask.png`` and ``overlay.png``."""
+        self._overview("tissue_mask")
         self.result.save(out_dir)
 
     def save_tiles(self, out_dir: str | Path, fmt: str = "png") -> list[Path]:

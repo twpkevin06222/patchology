@@ -111,6 +111,31 @@ with SegmentationTileGenerator(
         ...
 ```
 
+Detection tiles: `DetectionTileGenerator` takes the same GeoJSON ground truth
+and yields `((x, y), tile, target)`, with `target` =
+`{"boxes": (N, 4) float32, "labels": (N,) int64}`: each object's bounding box in
+COCO `[x, y, width, height]` tile pixels. An object cut by the tile edge is
+kept (clipped) if at least `min_box_visibility` (e.g. 0.6 = 60%) of its box is
+inside the tile, and a tile is kept if it has at least `min_objects` objects (0
+keeps empty tissue tiles too, as negatives). `class_map` labels are integers
+>= 0 (default 1 for every object). With `roi_class`, tiles must lie wholly
+inside the annotated region, so unannotated objects never count as background.
+
+```python
+from patchology import DetectionTileGenerator
+
+with DetectionTileGenerator(
+    "sample.svs",
+    "sample.svs_annotations.geojson",  # ASAP XML: python -m patchology.utilities.xml_to_geojson
+    min_box_visibility=0.6,
+    min_objects=1,
+    class_map={"class01": 1, "class02": 2},
+    roi_class="roi",
+) as gen:
+    for (x, y), tile, target in gen:
+        ...
+```
+
 GeoJSON format: ROI and ground-truth files are QuPath-style GeoJSON with
 coordinates in level-0 (full resolution) pixels. See
 [`src/patchology/references/sample.svs_annotations.geojson`](src/patchology/references/sample.svs_annotations.geojson)

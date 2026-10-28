@@ -1,6 +1,10 @@
 """Tile layouts and the tiling pipeline."""
 
-from patchology.tiling.generator import SegmentationTileGenerator, TileGenerator
+from patchology.tiling.generator import (
+    DetectionTileGenerator,
+    SegmentationTileGenerator,
+    TileGenerator,
+)
 from patchology.tiling.grid import GridType, hex_grid, make_grid, square_grid
 from patchology.tiling.tiler import (
     TilingConfig,
@@ -11,6 +15,7 @@ from patchology.tiling.tiler import (
 )
 
 __all__ = [
+    "DetectionTileGenerator",
     "GridType",
     "SegmentationTileGenerator",
     "TileGenerator",

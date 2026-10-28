@@ -51,6 +51,12 @@ def _shared_cache(pid: int) -> fastslide.CacheManager:
     return fastslide.CacheManager.create(base.TILE_CACHE_BYTES)
 
 
+# FastSlide decodes on a process-wide thread pool, started by the first read. A
+# process forked after that inherits the pool without its threads, so its first
+# read would wait forever; remember which process started the pool to fail instead.
+_pool_pid: int | None = None
+
+
 class FastSlideReader(SlideReader):
     backend = "fastslide"
 
@@ -144,6 +150,16 @@ class FastSlideReader(SlideReader):
         x1, y1 = min(lx + width, level_w), min(ly + height, level_h)
         if x1 <= x0 or y1 <= y0:
             return out
+        global _pool_pid
+        if _pool_pid is None:
+            _pool_pid = os.getpid()
+        elif _pool_pid != os.getpid():
+            raise RuntimeError(
+                "FastSlide cannot read in a process forked after its parent read with "
+                "FastSlide (its thread pool does not survive fork(), the read would hang). "
+                "Start workers fresh, e.g. DataLoader(..., multiprocessing_context="
+                "'forkserver'), or use the 'openslide' backend."
+            )
         image = self._slide.read_region((x0, y0), level, (x1 - x0, y1 - y0))
         pixels = _to_rgba(image.to_interleaved().numpy())
         ph, pw = pixels.shape[:2]

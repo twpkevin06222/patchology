@@ -1,5 +1,7 @@
 """Conformance of the real backends; needs ``$PATCHOLOGY_TEST_SLIDE``."""
 
+import os
+
 import numpy as np
 import pytest
 
@@ -77,3 +79,20 @@ def test_read_region_past_edge_is_padded_like_openslide(readers):
         b = np.asarray(fs_reader.read_region(location, 0, (256, 256)))
         assert b.shape == (256, 256, 4)
         assert (a[..., 3] == b[..., 3]).all()
+
+
+def test_fastslide_read_in_forked_child_raises_instead_of_hanging(readers, real_slide_path):
+    readers[1].read_region((0, 0), 0, (64, 64))  # starts FastSlide's thread pool here
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        try:
+            open_slide(real_slide_path, "fastslide", fallback=False).read_region(
+                (0, 0), 0, (64, 64)
+            )
+            os.write(w, b"read")
+        except RuntimeError as e:
+            os.write(w, b"raised" if "forkserver" in str(e) else b"other")
+        os._exit(0)
+    os.waitpid(pid, 0)
+    assert os.read(r, 16) == b"raised"

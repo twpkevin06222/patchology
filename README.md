@@ -142,7 +142,10 @@ The first ring of a polygon is its outline and any further rings are holes.
 
 PyTorch: a generator is a map-style dataset (`len`, `gen[i]`), so wrap it in a
 `torch.utils.data.Dataset` and use any `num_workers`; each worker reopens the
-slide, and tiling runs once in the main process. Read tiles with
+slide, and tiling runs once in the main process. With the `fastslide` backend,
+start workers with `multiprocessing_context="forkserver"` (or `"spawn"`): FastSlide's
+thread pool does not survive `fork()`, so forked workers raise instead of reading.
+Read tiles with
 `gen.get_tile(i)` (`((x, y), tile)`, plus `mask` for segmentation),
 `gen.get_tile_at(x, y)` (any level-0 coordinate) and `gen.index_of(x, y)`.
 

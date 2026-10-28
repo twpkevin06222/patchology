@@ -10,6 +10,7 @@ from patchology.color import (
 from patchology.log import configure_logging
 from patchology.reader import Backend, SlideOpenError, SlideReader, open_slide
 from patchology.tiling import (
+    DetectionTileGenerator,
     SegmentationTileGenerator,
     TileGenerator,
     TilingConfig,
@@ -41,6 +42,7 @@ __all__ = [
     "ArtifactConfig",
     "Backend",
     "ColorConfig",
+    "DetectionTileGenerator",
     "SegmentationTileGenerator",
     "SlideMask",
     "SlideOpenError",

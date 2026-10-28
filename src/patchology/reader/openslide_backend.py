@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import functools
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
 import openslide
 from PIL import Image
 
+from patchology.reader import base
 from patchology.reader.base import SlideOpenError, SlideReader
+
+
+@functools.cache
+def _shared_cache(pid: int) -> openslide.OpenSlideCache:
+    # Keyed by pid: a forked worker must not use the parent's cache (or its lock).
+    return openslide.OpenSlideCache(base.TILE_CACHE_BYTES)
 
 
 class OpenSlideReader(SlideReader):
@@ -20,6 +29,7 @@ class OpenSlideReader(SlideReader):
             self._slide = openslide.OpenSlide(self._path)
         except openslide.OpenSlideError as e:
             raise SlideOpenError(f"OpenSlide cannot open {self._path}: {e}") from e
+        self._slide.set_cache(_shared_cache(os.getpid()))
 
     @property
     def level_count(self) -> int:

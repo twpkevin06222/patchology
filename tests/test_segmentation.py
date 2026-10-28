@@ -183,3 +183,25 @@ def test_make_palette_distinct_colours():
     for n in (3, 10, 40):
         palette = make_palette(range(1, n + 1))
         assert len(palette) == n and len(set(palette.values())) == n
+
+
+def test_release_overviews_keeps_tiles_and_ground_truth_overlay(slide: ArrayReader, gt, tmp_path):
+    gen = SegmentationTileGenerator(slide, gt, object_mask_overlap=0.2, tiling=CONFIG)
+    before = [gen.get_tile(i) for i in range(len(gen))]
+    n = len(gen)
+    gen.release_overviews()
+
+    assert len(gen) == n
+    for (xy, tile, mask), (xy2, tile2, mask2) in zip(before, map(gen.get_tile, range(n))):
+        assert xy == xy2 and np.array_equal(tile, tile2) and np.array_equal(mask, mask2)
+    assert gen.overlay(slide=slide, max_size=256).size[0] == 256
+    for fails in (
+        lambda: gen.thumbnail,
+        lambda: gen.tissue_mask,
+        lambda: gen.artifact_mask,
+        lambda: gen.overlay(),
+        lambda: gen.overlay(slide=slide, tissue=True),
+        lambda: gen.save(tmp_path),
+    ):
+        with pytest.raises(RuntimeError, match="release_overviews"):
+            fails()

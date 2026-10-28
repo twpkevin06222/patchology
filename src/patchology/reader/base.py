@@ -45,6 +45,11 @@ PROPERTY_NAME_BOUNDS_HEIGHT = "openslide.bounds-height"
 # that e.g. a level with downsample 4.0002 is used for a request of 4.0.
 LEVEL_DOWNSAMPLE_TOLERANCE = 0.01
 
+# Decoded-tile cache shared by every slide a process opens (each backend keeps one
+# per process). Per-slide caches add up with many open slides: 97 slides x 8
+# DataLoader workers x 32 MB is ~25 GB. Set before opening slides to resize.
+TILE_CACHE_BYTES = 256 << 20
+
 
 class SlideOpenError(RuntimeError):
     """Raised when no backend could open a slide."""

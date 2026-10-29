@@ -346,7 +346,8 @@ first, so stains are estimated on calibrated colours.
 
 ![ICC calibration and stain normalisation](src/patchology/figures/color_comparison.png)
 *Three 512 px tiles at 0.5 µm/px: (a) as stored, (b) after ICC calibration to
-sRGB, (c) after ICC and Macenko normalisation to `REFERENCE_STAINS`.*
+sRGB, (c) after ICC and Macenko normalisation to `REFERENCE_STAINS`, (d) after
+Macenko normalisation alone, with stains estimated on uncalibrated colours.*
 
 The classic `REFERENCE_STAINS` target gives a pale eosin (as in (c)); pass
 your own reference tile, e.g. `stain_target="my_reference.png"`, to match your

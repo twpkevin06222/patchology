@@ -97,3 +97,39 @@ def test_box_grid_finds_every_box_a_tile_touches():
         )
         found = grid.query(x, y, 256.0)
         assert set(touching) <= set(found) and (np.diff(found) > 0).all()
+
+
+def test_roi_fill_keeps_tiles_overlapping_a_small_roi_and_paints_outside(
+    slide: ArrayReader, tmp_path
+):
+    # A 150 px ROI, smaller than a 256 px (level-0) tile, with one cell inside.
+    roi, cell = (1300, 1100, 1450, 1250), (1350, 1150, 1370, 1170)
+    gt = _cells(tmp_path, [roi, cell], classes=["roi", "cell"])
+    edge = TilingConfig(tile_size=128, tile_mpp=1.0, tissue_overlap=0.1)
+    assert len(DetectionTileGenerator(slide, gt, roi_class="roi", tiling=edge)) == 0
+
+    fill = (0, 0, 255)
+    gen = DetectionTileGenerator(slide, gt, roi_class="roi", roi_fill=fill, tiling=edge)
+    plain = TileGenerator(slide, tiling=edge)
+    assert len(gen) and gen.metadata()["ground_truth"]["roi_fill"] == fill
+    for i, (x, y) in enumerate(gen.coords):
+        _, tile, target = gen[i]
+        assert len(target["labels"]) == 1
+        original = plain.get_tile_at(x, y)
+        # Tile pixel (i, j) is level-0 (x + 2j, y + 2i); 2 px slack at the ROI edge.
+        lx = x + 2 * np.arange(128)
+        ly = y + 2 * np.arange(128)
+        inside = ((ly > roi[1] + 2) & (ly < roi[3] - 2))[:, None] & (
+            (lx > roi[0] + 2) & (lx < roi[2] - 2)
+        )[None, :]
+        outside = ~(
+            ((ly >= roi[1] - 2) & (ly <= roi[3] + 2))[:, None]
+            & ((lx >= roi[0] - 2) & (lx <= roi[2] + 2))[None, :]
+        )
+        assert inside.any() and outside.any()
+        np.testing.assert_array_equal(tile[inside], original[inside])
+        assert (tile[outside] == fill).all()
+        np.testing.assert_array_equal(gen.get_tile_at(x, y)[0], tile)
+
+    with pytest.raises(ValueError, match="roi_fill"):
+        DetectionTileGenerator(slide, gt, roi_class="roi", roi_fill=(0, 0, 256), tiling=edge)

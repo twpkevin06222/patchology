@@ -1,4 +1,5 @@
-"""Tiles as stored, after ICC calibration, and after Macenko stain normalisation.
+"""Tiles as stored, after ICC calibration, and after Macenko stain normalisation
+with and without ICC calibration first.
 
 Rows are the tiles with the most tissue, spread over the slide. Needs
 matplotlib, which is not a patchology dependency::
@@ -22,10 +23,16 @@ TILE, MPP, ROWS = 512, 0.5, 3
 def plot(slide_path: Path, reference: Path | None, out_path: Path) -> None:
     import matplotlib.pyplot as plt
 
-    color = ColorConfig(stain_normalization="macenko", stain_target=reference or REFERENCE_STAINS)
+    tiling = TilingConfig(tile_size=TILE, tile_mpp=MPP, tissue_overlap=0.9)
+    target_stains = reference or REFERENCE_STAINS
     with open_slide(slide_path, backend="openslide") as slide:
         result = TilingPipeline(
-            tiling=TilingConfig(tile_size=TILE, tile_mpp=MPP, tissue_overlap=0.9), color=color
+            tiling=tiling, color=ColorConfig(stain_normalization="macenko", stain_target=target_stains)
+        ).run(slide)
+        # Stains re-estimated on uncalibrated colours, for Macenko without ICC.
+        no_icc = TilingPipeline(
+            tiling=tiling,
+            color=ColorConfig(icc=False, stain_normalization="macenko", stain_target=target_stains),
         ).run(slide)
         # Most-tissue tiles first, then pick ROWS spread over that top tenth.
         best = np.argsort(-result.tissue_fraction)[: max(ROWS, len(result) // 10)]
@@ -35,7 +42,9 @@ def plot(slide_path: Path, reference: Path | None, out_path: Path) -> None:
             x, y = (int(v) for v in result.coords[i])
             raw = slide.read_region_scaled((x, y), result.downsample, (TILE, TILE))
             icc = slide.apply_icc(raw)
-            panels.append(((x, y), [raw, icc, result.read_tile(slide, int(i))]))
+            panels.append(
+                ((x, y), [raw, icc, result.read_tile(slide, int(i)), no_icc.read_tile_at(slide, x, y)])
+            )
         has_icc = slide.icc_profile is not None
 
     target = reference.name if reference else "REFERENCE_STAINS"
@@ -43,8 +52,9 @@ def plot(slide_path: Path, reference: Path | None, out_path: Path) -> None:
         "(a) Original",
         "(b) ICC calibrated" if has_icc else "(b) ICC calibrated (no profile: unchanged)",
         f"(c) ICC + Macenko\n(target: {target})",
+        f"(d) Original + Macenko\n(target: {target})",
     ]
-    fig, axes = plt.subplots(ROWS, 3, figsize=(12, 4 * ROWS), dpi=150, squeeze=False)
+    fig, axes = plt.subplots(ROWS, 4, figsize=(16, 4 * ROWS), dpi=150, squeeze=False)
     for r, ((x, y), images) in enumerate(panels):
         for c, image in enumerate(images):
             ax = axes[r, c]

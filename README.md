@@ -118,8 +118,11 @@ COCO `[x, y, width, height]` tile pixels. An object cut by the tile edge is
 kept (clipped) if at least `min_box_visibility` (e.g. 0.6 = 60%) of its box is
 inside the tile, and a tile is kept if it has at least `min_objects` objects (0
 keeps empty tissue tiles too, as negatives). `class_map` labels are integers
->= 0 (default 1 for every object). With `roi_class`, tiles must lie wholly
-inside the annotated region, so unannotated objects never count as background.
+>= 0 (default 1 for every object). With `roi_class`, unannotated objects
+outside the annotated region must never count as background: by default tiles
+lie wholly inside it, and with `roi_fill` (an RGB colour) tiles only need to
+overlap it and pixels outside it are painted over, so regions smaller than a
+tile still give tiles (lower `tiling.tissue_overlap` for very small regions).
 
 ```python
 from patchology import DetectionTileGenerator
@@ -131,6 +134,7 @@ with DetectionTileGenerator(
     min_objects=1,
     class_map={"class01": 1, "class02": 2},
     roi_class="roi",
+    roi_fill=(255, 255, 255),  # paint outside the ROI white instead of skipping such tiles
 ) as gen:
     for (x, y), tile, target in gen:
         ...

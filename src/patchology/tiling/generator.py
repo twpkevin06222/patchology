@@ -7,7 +7,7 @@ import dataclasses
 import functools
 import os
 import time
-from collections.abc import Collection, Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -643,8 +643,10 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
     ``[x, y, width, height]`` tile pixels (top-left origin), labels from
     ``class_map`` (1 for every object without one).
 
-    With ``roi_class``, tiles must lie wholly inside the
-    annotated region, so unannotated objects never count as background.
+    With ``roi_class``, unannotated objects outside the annotated region must
+    never count as background. By default tiles must lie wholly inside it; with
+    ``roi_fill`` they only need to overlap it, and pixels outside it are painted
+    ``roi_fill``, so small regions (smaller than a tile) still give tiles.
 
     Example::
 
@@ -655,6 +657,7 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
             min_objects=1,
             class_map={"class01": 1, "class02": 2},
             roi_class="roi",
+            roi_fill=(255, 255, 255),
         ) as gen:
             for (x, y), tile, target in gen:
                 ...
@@ -669,6 +672,7 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
         class_map: Mapping[str, int] | None = None,
         check_ground_truth_name: bool = True,
         roi_class: str | None = None,
+        roi_fill: Sequence[int] | None = None,
         **kwargs,
     ) -> None:
         """
@@ -691,11 +695,18 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
             roi_class: Class name of the objects in ``ground_truth`` that mark
                 the annotated region rather than an object, e.g. ``"roi"``.
                 Tiles come only from wholly inside them (and inside ``roi`` if
-                also given). None treats every object as ground truth.
+                also given), unless ``roi_fill`` is set. None treats every
+                object as ground truth.
+            roi_fill: RGB colour, e.g. ``(255, 255, 255)``, for tile pixels
+                outside the ``roi_class`` region. Tiles then only need to
+                overlap the region (enough for ``tiling.tissue_overlap``, so
+                lower it for small regions), and objects outside it are hidden
+                rather than shown unlabelled. None (default) requires tiles
+                wholly inside the region. Unused without ``roi_class``.
             **kwargs: Passed to :class:`TileGenerator` (tiling, color, roi, ...).
 
         Raises:
-            ValueError: Bad ``min_box_visibility``, ``min_objects`` or
+            ValueError: Bad ``min_box_visibility``, ``min_objects``, ``roi_fill`` or
                 ``class_map``, unreadable file, no object of a mapped class or
                 of ``roi_class``, or a file named for another slide.
         """
@@ -707,6 +718,13 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
             isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in class_map.values()
         ):
             raise ValueError(f"class_map labels must be integers >= 0, got {class_map}")
+        if roi_fill is not None:
+            if len(roi_fill) != 3 or not all(
+                isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 255 for v in roi_fill
+            ):
+                raise ValueError(f"roi_fill must be 3 integers in [0, 255], got {roi_fill!r}")
+            roi_fill = tuple(roi_fill)
+        self.roi_fill = roi_fill
         self.min_box_visibility = min_box_visibility
         self.min_objects = min_objects
         self._grid: _BoxGrid | None = None  # built on first use, sized to the tile extent
@@ -722,8 +740,10 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
             [len(self._target(x, y, result)["labels"]) for x, y in result.coords], dtype=int
         )
         keep = counts >= self.min_objects
-        if self.roi_polygons is not None:
-            keep &= np.array([self._inside_roi(x, y, result) for x, y in result.coords], bool)
+        if self.roi_polygons is not None and self.roi_fill is None:
+            keep &= np.array(
+                [self._roi_mask(x, y, result).all() for x, y in result.coords], dtype=bool
+            )
         self.object_count = counts[keep]
         rule = f">= {self.min_objects} object(s) {100 * self.min_box_visibility:.0f}% inside"
         return self._keep(result, keep, rule)
@@ -736,16 +756,18 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
     def get_tile(self, index: int) -> tuple[tuple[int, int], np.ndarray, dict[str, np.ndarray]]:
         """``((x, y), tile, target)`` of selected tile ``index``."""
         (x, y), tile = super().get_tile(index)
-        return (x, y), tile, self.tile_target(index)
+        return (x, y), self._fill_outside_roi(tile, x, y), self.tile_target(index)
 
     def get_tile_at(self, x: int, y: int) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         """``(tile, target)`` whose level-0 top-left corner is ``(x, y)``."""
-        return super().get_tile_at(x, y), self._target(int(x), int(y), self.result)
+        tile = self._fill_outside_roi(super().get_tile_at(x, y), x, y)
+        return tile, self._target(int(x), int(y), self.result)
 
     def metadata(self) -> dict:
         meta = super().metadata()
         meta["ground_truth"]["min_box_visibility"] = self.min_box_visibility
         meta["ground_truth"]["min_objects"] = self.min_objects
+        meta["ground_truth"]["roi_fill"] = self.roi_fill
         return meta
 
     def _target(self, x: float, y: float, result: TilingResult) -> dict[str, np.ndarray]:
@@ -765,11 +787,18 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
         labels = self._label_array[idx[keep]]
         return {"boxes": boxes.astype(np.float32), "labels": labels}
 
-    def _inside_roi(self, x: float, y: float, result: TilingResult) -> bool:
+    def _roi_mask(self, x: float, y: float, result: TilingResult) -> np.ndarray:
+        """``(tile_size, tile_size)`` mask, nonzero where the tile is inside the ``roi_class`` region."""
         size = result.config.tile_size
         scale = size / result.level0_tile_size
-        inside = rasterize_polygons(self.roi_polygons, (size, size), (scale, scale), (x, y))
-        return bool(inside.all())
+        return rasterize_polygons(self.roi_polygons, (size, size), (scale, scale), (x, y))
+
+    def _fill_outside_roi(self, tile: np.ndarray, x: float, y: float) -> np.ndarray:
+        if self.roi_fill is None or self.roi_polygons is None:
+            return tile
+        tile = tile.copy()
+        tile[self._roi_mask(x, y, self.result) == 0] = self.roi_fill
+        return tile
 
 
 class _BoxGrid:

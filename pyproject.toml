@@ -10,8 +10,8 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "loguru>=0.7.3",
-    "numpy>=1.26",
-    "opencv-python-headless>=4.10",
+    "numpy>=2.5.4",
+    "opencv-python-headless>=5.0.0.93",
     "openslide-bin>=4.0.0",
     "openslide-python>=1.4.3",
     "pillow>=10.0",

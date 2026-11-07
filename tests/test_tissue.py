@@ -41,6 +41,22 @@ def test_blank_slide_has_no_tissue():
     assert not mask.any()
 
 
+def test_dark_grey_objects_are_background_but_dark_tissue_is_kept():
+    thumb = _thumbnail()
+    thumb[100:300, 150:350] = tissue_texture(200, 200)
+    thumb[180:220, 200:300] = (100, 55, 110)  # dense hematoxylin: dark but chromatic
+    rng = np.random.default_rng(1)
+    thumb[20:80, 380:480] = (35, 35, 30) + rng.integers(0, 3, (60, 100, 1))  # flat black marker
+    grain = rng.integers(30, 110, (60, 80, 1))  # strong IHC stain: grey but grainy
+    thumb[320:380, 30:110] = np.concatenate([grain, grain, grain + 15], axis=2)
+    mask = detect_tissue(thumb, THUMB_MPP)
+    assert mask[110:290, 160:340].mean() > 0.99
+    assert not mask[10:90, 370:490].any()
+    assert mask[320:380, 30:110].mean() > 0.99
+    baseline = detect_tissue(thumb, THUMB_MPP, TissueConfig(remove_dark_objects=False))
+    assert baseline[20:80, 380:480].mean() > 0.99  # saturation alone calls the marker tissue
+
+
 def test_small_debris_removed_and_small_holes_filled():
     thumb = _thumbnail()
     thumb[100:300, 150:350] = tissue_texture(200, 200)

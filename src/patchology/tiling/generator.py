@@ -6,6 +6,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import os
+import random
 import time
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from pathlib import Path
@@ -525,6 +526,7 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
         roi_class: str | None = None,
         ignore_index: int = 255,
         negative_sampling: float = 0.0,
+        seed: int | None = None,
         **kwargs,
     ) -> None:
         """
@@ -551,10 +553,14 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
                 without ``roi_class``.
             negative_sampling: Also keep this many tiles with no ground truth
                 (an all-background mask), as a fraction of the tiles kept by
-                ``object_mask_overlap``; 0.2 adds 20%. Drawn at random, with a
-                fixed seed, from the selected tissue tiles; fewer if the slide
+                ``object_mask_overlap``; 0.2 adds 20%. Drawn at random (see
+                ``seed``) from the selected tissue tiles; fewer if the slide
                 has fewer. With ``roi_class``, only tiles wholly inside the
                 ROI qualify, so a negative has no ``ignore_index`` pixels.
+            seed: Seed for drawing the ``negative_sampling`` tiles. None draws
+                from Python's global ``random`` state, so ``random.seed(n)``
+                (or Lightning's ``seed_everything(n)``) fixes the draw; an
+                integer fixes it regardless of the global state.
             **kwargs: Passed to :class:`TileGenerator` (tiling, color, roi, ...).
 
         Raises:
@@ -577,6 +583,7 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
                 raise ValueError(f"ignore_index {ignore_index} is also a class_map label")
         self.object_mask_overlap = object_mask_overlap
         self.negative_sampling = negative_sampling
+        self.seed = seed
         self.ignore_index = ignore_index
         super().__init__(
             slide, ground_truth, class_map, check_ground_truth_name, roi_class, **kwargs
@@ -597,7 +604,8 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
         negatives = np.flatnonzero(~keep & background)
         count = min(round(self.negative_sampling * keep.sum()), len(negatives))
         if count:
-            keep[np.random.default_rng(0).choice(negatives, count, replace=False)] = True
+            rng = np.random.default_rng(random.getrandbits(64) if self.seed is None else self.seed)
+            keep[rng.choice(negatives, count, replace=False)] = True
             rule += f" plus {count} without"
         self.object_fraction = fractions[keep]
         return self._keep(result, keep, rule)
@@ -620,6 +628,7 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
         meta = super().metadata()
         meta["ground_truth"]["object_mask_overlap"] = self.object_mask_overlap
         meta["ground_truth"]["negative_sampling"] = self.negative_sampling
+        meta["ground_truth"]["seed"] = self.seed
         meta["ground_truth"]["ignore_index"] = (
             self.ignore_index if self.roi_class is not None else None
         )

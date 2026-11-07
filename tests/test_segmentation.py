@@ -1,4 +1,5 @@
 import json
+import random
 
 import numpy as np
 import pytest
@@ -74,10 +75,6 @@ def test_negative_sampling_adds_empty_tiles(slide: ArrayReader, gt):
     negatives = [i for i, f in enumerate(gen.object_fraction) if f == 0]
     assert len(negatives) == round(0.5 * n)
     assert all(gen.tile_mask(i).sum() == 0 for i in negatives)
-    again = SegmentationTileGenerator(
-        slide, gt, object_mask_overlap=0.2, negative_sampling=0.5, tiling=CONFIG
-    )
-    np.testing.assert_array_equal(gen.coords, again.coords)
     assert gen.metadata()["ground_truth"]["negative_sampling"] == 0.5
 
     capped = SegmentationTileGenerator(
@@ -110,6 +107,25 @@ def test_negative_sampling_with_roi_class_stays_inside_roi(slide: ArrayReader, t
     negatives = [gen.tile_mask(i) for i, f in enumerate(gen.object_fraction) if f == 0]
     assert len(negatives) == inside_empty
     assert all(not m.any() for m in negatives)
+
+
+def test_negative_sampling_seed(slide: ArrayReader, gt):
+    def coords(**kwargs):
+        gen = SegmentationTileGenerator(
+            slide, gt, object_mask_overlap=0.2, negative_sampling=1.0, tiling=CONFIG, **kwargs
+        )
+        return gen.coords.tolist()
+
+    random.seed(1)
+    first = coords()
+    random.seed(1)
+    assert coords() == first  # None follows Python's global seed
+    random.seed(2)
+    assert coords() != first
+    random.seed(1)
+    fixed = coords(seed=7)
+    random.seed(2)
+    assert coords(seed=7) == fixed != coords(seed=8)  # an explicit seed ignores it
 
 
 def test_hole_is_empty_in_mask(slide: ArrayReader, tmp_path):

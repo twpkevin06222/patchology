@@ -10,6 +10,16 @@ import numpy as np
 
 ThresholdMethod = Literal["triangle", "otsu", "otsu_gray", "fixed"]
 
+# Black fiducials and dark slide edges are grey, but HSV saturation, (max - min) / max,
+# blows up on dark pixels and passes them as tissue. Absolute chroma (max - min) stays
+# low on them (<= ~30) and high on dark H&E tissue (>= ~45 on the TIGER val set). Strong
+# IHC stain can be dark grey too, so grey regions also need to be flat (3x3 px intensity
+# SD: <= ~5.5 on artifacts, >= ~9 on IHC tissue in ACROBAT val) or touch the border.
+DARK_MAX_VALUE = 160
+DARK_MAX_CHROMA = 25
+DARK_MAX_TEXTURE = 8.0
+DARK_OPENING_UM = 40.0
+
 
 @dataclass(frozen=True)
 class TissueConfig:
@@ -38,6 +48,10 @@ class TissueConfig:
         closing_um: Morphological closing that joins nearby tissue fragments.
         min_tissue_area_um2: Connected regions smaller than this are dropped.
         max_hole_area_um2: Holes inside tissue smaller than this are filled.
+        remove_dark_objects: Treat dark grey regions of at least
+            ``min_tissue_area_um2`` that are flat or touch the image border,
+            such as fiducial markers, labels and slide edges, and their colour
+            fringe as background.
     """
 
     method: ThresholdMethod = "triangle"
@@ -48,6 +62,7 @@ class TissueConfig:
     closing_um: float = 128.0
     min_tissue_area_um2: float = 50_000.0
     max_hole_area_um2: float = 50_000.0
+    remove_dark_objects: bool = True
 
 
 def detect_tissue(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConfig()) -> np.ndarray:
@@ -58,6 +73,8 @@ def detect_tissue(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConf
         mpp: Microns per pixel of ``rgb``.
         config: Detection settings.
     """
+    if config.remove_dark_objects:
+        rgb = np.where(dark_objects(rgb, mpp, config)[..., None], np.uint8(255), rgb)
     if config.method == "otsu_gray":
         signal = 255 - cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
     elif config.method in ("triangle", "otsu", "fixed"):
@@ -86,6 +103,43 @@ def detect_tissue(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConf
     mask = remove_small_objects(mask, config.min_tissue_area_um2 / pixel_area)
     mask = fill_small_holes(mask, config.max_hole_area_um2 / pixel_area)
     return mask
+
+
+def dark_objects(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConfig()) -> np.ndarray:
+    """Return a mask of solid dark grey regions in ``rgb``, grown to cover their colour fringe."""
+    pixels = rgb.astype(np.int16)
+    value = pixels.max(axis=2)
+    dark = ((value < DARK_MAX_VALUE) & (value - pixels.min(axis=2) < DARK_MAX_CHROMA)).astype(
+        np.uint8
+    )
+    # Opening drops scattered grey pixels inside tissue, such as pigment and nuclei.
+    open_px = _odd(DARK_OPENING_UM / mpp)
+    if open_px > 1:
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_px, open_px))
+        dark = cv2.morphologyEx(dark, cv2.MORPH_OPEN, kernel)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    big = stats[:, cv2.CC_STAT_AREA] >= config.min_tissue_area_um2 / (mpp * mpp)
+    big[0] = False
+
+    # Markers, clips and labels are flat; strongly stained IHC tissue is grainy.
+    v = value.astype(np.float32)
+    mean = cv2.blur(v, (3, 3))
+    texture = np.sqrt(np.maximum(cv2.blur(v * v, (3, 3)) - mean * mean, 0))
+    flat = np.zeros(count, bool)
+    for i in np.flatnonzero(big):
+        x, y, w, h = stats[i, :4]
+        region = labels[y : y + h, x : x + w] == i
+        flat[i] = np.median(texture[y : y + h, x : x + w][region]) < DARK_MAX_TEXTURE
+
+    # Grainy slide edges lie along the image border or beside a flat artifact.
+    fringe_px = 2 * _odd(config.smoothing_um / mpp) + 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (fringe_px, fringe_px))
+    seeds = cv2.dilate(flat[labels].astype(np.uint8), kernel)
+    seeds[[0, -1], :] = seeds[:, [0, -1]] = 1
+    touching = np.zeros(count, bool)
+    touching[labels[seeds > 0]] = True
+    artifacts = (big & (flat | touching))[labels]
+    return cv2.dilate(artifacts.astype(np.uint8), kernel).astype(bool)
 
 
 def remove_small_objects(mask: np.ndarray, min_area_px: float) -> np.ndarray:

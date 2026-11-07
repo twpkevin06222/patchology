@@ -492,7 +492,8 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
 
     Tiles are selected as by :class:`TileGenerator` (tissue, artifacts, ROI),
     then kept only if at least ``object_mask_overlap`` of their area is
-    covered by the ground-truth polygons. Iterating yields
+    covered by the ground-truth polygons. ``negative_sampling`` adds tiles
+    with no ground truth at all, as a fraction of that count. Iterating yields
     ``((x, y), tile, mask)``, where ``mask`` is a ``(tile_size, tile_size)``
     uint8 array aligned pixel for pixel with ``tile``: 0 for background and
     each object's label from ``class_map`` (1 for every object without one).
@@ -523,6 +524,7 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
         check_ground_truth_name: bool = True,
         roi_class: str | None = None,
         ignore_index: int = 255,
+        negative_sampling: float = 0.0,
         **kwargs,
     ) -> None:
         """
@@ -547,15 +549,23 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
             ignore_index: Mask value for pixels outside the ``roi_class``
                 region, in ``[1, 255]`` and not used by ``class_map``. Unused
                 without ``roi_class``.
+            negative_sampling: Also keep this many tiles with no ground truth
+                (an all-background mask), as a fraction of the tiles kept by
+                ``object_mask_overlap``; 0.2 adds 20%. Drawn at random, with a
+                fixed seed, from the selected tissue tiles; fewer if the slide
+                has fewer. With ``roi_class``, only tiles wholly inside the
+                ROI qualify, so a negative has no ``ignore_index`` pixels.
             **kwargs: Passed to :class:`TileGenerator` (tiling, color, roi, ...).
 
         Raises:
-            ValueError: Bad ``object_mask_overlap``, ``class_map`` or
-                ``ignore_index``, unreadable file, no object of a mapped class
+            ValueError: Bad ``object_mask_overlap``, ``negative_sampling``,
+                ``class_map`` or ``ignore_index``, unreadable file, no object of a mapped class
                 or of ``roi_class``, or a file named for another slide.
         """
         if not 0.0 <= object_mask_overlap <= 1.0:
             raise ValueError(f"object_mask_overlap must be in [0, 1], got {object_mask_overlap}")
+        if not negative_sampling >= 0.0:
+            raise ValueError(f"negative_sampling must be >= 0, got {negative_sampling}")
         if class_map is not None and not all(
             isinstance(v, int) and 1 <= v <= 255 for v in class_map.values()
         ):
@@ -566,6 +576,7 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
             if class_map is not None and ignore_index in class_map.values():
                 raise ValueError(f"ignore_index {ignore_index} is also a class_map label")
         self.object_mask_overlap = object_mask_overlap
+        self.negative_sampling = negative_sampling
         self.ignore_index = ignore_index
         super().__init__(
             slide, ground_truth, class_map, check_ground_truth_name, roi_class, **kwargs
@@ -575,13 +586,21 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
     def result(self) -> TilingResult:
         """Tissue tiles that overlap the ground truth enough; computed in ``__init__``."""
         result = TileGenerator.result.func(self)
-        fractions = np.array(
-            [self._labelled(self._mask(x, y, result)).mean() for x, y in result.coords],
-            dtype=float,
-        )
+        fractions = np.zeros(len(result))
+        background = np.zeros(len(result), bool)  # no label and nothing ignored
+        for i, (x, y) in enumerate(result.coords):
+            mask = self._mask(x, y, result)
+            fractions[i] = self._labelled(mask).mean()
+            background[i] = not mask.any()
         keep = fractions >= self.object_mask_overlap
+        rule = f">= {100 * self.object_mask_overlap:.0f}% ground truth"
+        negatives = np.flatnonzero(~keep & background)
+        count = min(round(self.negative_sampling * keep.sum()), len(negatives))
+        if count:
+            keep[np.random.default_rng(0).choice(negatives, count, replace=False)] = True
+            rule += f" plus {count} without"
         self.object_fraction = fractions[keep]
-        return self._keep(result, keep, f">= {100 * self.object_mask_overlap:.0f}% ground truth")
+        return self._keep(result, keep, rule)
 
     def tile_mask(self, index: int) -> np.ndarray:
         """Ground-truth mask of tile ``index``, ``(tile_size, tile_size)`` uint8 labels."""
@@ -600,6 +619,7 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
     def metadata(self) -> dict:
         meta = super().metadata()
         meta["ground_truth"]["object_mask_overlap"] = self.object_mask_overlap
+        meta["ground_truth"]["negative_sampling"] = self.negative_sampling
         meta["ground_truth"]["ignore_index"] = (
             self.ignore_index if self.roi_class is not None else None
         )

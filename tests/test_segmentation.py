@@ -59,6 +59,59 @@ def test_overlap_threshold_and_zero_keeps_all(slide: ArrayReader, gt):
     assert (full.object_fraction == 1.0).all()
 
 
+def test_negative_sampling_adds_empty_tiles(slide: ArrayReader, gt):
+    every = SegmentationTileGenerator(slide, gt, object_mask_overlap=0.0, tiling=CONFIG)
+    empty = int((every.object_fraction == 0).sum())
+    positive = SegmentationTileGenerator(slide, gt, object_mask_overlap=0.2, tiling=CONFIG)
+    n = len(positive)
+    assert empty > 2 * n > 0
+
+    gen = SegmentationTileGenerator(
+        slide, gt, object_mask_overlap=0.2, negative_sampling=0.5, tiling=CONFIG
+    )
+    assert len(gen) == n + round(0.5 * n)
+    assert {tuple(c) for c in positive.coords} <= {tuple(c) for c in gen.coords}
+    negatives = [i for i, f in enumerate(gen.object_fraction) if f == 0]
+    assert len(negatives) == round(0.5 * n)
+    assert all(gen.tile_mask(i).sum() == 0 for i in negatives)
+    again = SegmentationTileGenerator(
+        slide, gt, object_mask_overlap=0.2, negative_sampling=0.5, tiling=CONFIG
+    )
+    np.testing.assert_array_equal(gen.coords, again.coords)
+    assert gen.metadata()["ground_truth"]["negative_sampling"] == 0.5
+
+    capped = SegmentationTileGenerator(
+        slide, gt, object_mask_overlap=0.2, negative_sampling=100, tiling=CONFIG
+    )
+    assert len(capped) == n + empty
+
+    with pytest.raises(ValueError, match="negative_sampling"):
+        SegmentationTileGenerator(slide, gt, negative_sampling=-0.1)
+
+
+def test_negative_sampling_with_roi_class_stays_inside_roi(slide: ArrayReader, tmp_path):
+    # ROI box half a tile off the 256 px grid, so edge tiles straddle it.
+    path = _write_gt(
+        tmp_path,
+        [[_square(1152, 640, 2176, 1664)], [_square(1664, 1152, 2688, 1664)]],
+        classes=["roi", "tumor"],
+    )
+    edge = TilingConfig(tile_size=128, tile_mpp=1.0, tissue_overlap=0.1)
+    kwargs = {"class_map": {"tumor": 1}, "roi_class": "roi", "tiling": edge}
+    every = SegmentationTileGenerator(slide, path, object_mask_overlap=0.0, **kwargs)
+    masks = [every.tile_mask(i) for i in range(len(every))]
+    assert any(not (m == 1).any() and (m == 255).any() for m in masks)  # straddling, no label
+    inside_empty = sum(not m.any() for m in masks)
+    assert inside_empty > 0
+
+    gen = SegmentationTileGenerator(
+        slide, path, object_mask_overlap=0.2, negative_sampling=100, **kwargs
+    )
+    negatives = [gen.tile_mask(i) for i, f in enumerate(gen.object_fraction) if f == 0]
+    assert len(negatives) == inside_empty
+    assert all(not m.any() for m in negatives)
+
+
 def test_hole_is_empty_in_mask(slide: ArrayReader, tmp_path):
     gt = _write_gt(tmp_path, [[_square(1024, 512, 3072, 2048), _square(1536, 1024, 2560, 1536)]])
     gen = SegmentationTileGenerator(slide, gt, object_mask_overlap=0.0, tiling=CONFIG)

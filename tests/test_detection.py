@@ -46,8 +46,13 @@ def test_n_objects_and_zero_keeps_empty_tiles(slide: ArrayReader, tmp_path):
     one = DetectionTileGenerator(slide, gt, min_objects=1, class_map=labels, tiling=CONFIG)
     assert [one.tile_target(i)["labels"].tolist() for i in range(len(one))] == [[0, 0], [3]]
 
+    # class_count columns are label values (here 0 and 3), one row per selected tile.
+    assert one.class_count.tolist() == [[2, 0, 0, 0], [0, 0, 0, 1]]
+    np.testing.assert_array_equal(one.object_count, one.class_count.sum(axis=1))
+
     every = DetectionTileGenerator(slide, gt, min_objects=0, tiling=CONFIG)
     assert len(every) == len(TileGenerator(slide, tiling=CONFIG))
+    assert every.class_count.shape == (len(every), 2)  # unmapped: every object is label 1
     empty = every.tile_target(every.index_of(2560, 1536))
     assert empty["boxes"].shape == (0, 4) and empty["labels"].shape == (0,)
     meta = every.metadata()["ground_truth"]

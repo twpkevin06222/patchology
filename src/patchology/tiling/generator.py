@@ -499,6 +499,10 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
     uint8 array aligned pixel for pixel with ``tile``: 0 for background and
     each object's label from ``class_map`` (1 for every object without one).
 
+    Per selected tile, ``object_fraction`` is the labelled share of its pixels and
+    ``class_fraction[i, k]`` the share with label ``k`` (column 0 is background;
+    ``ignore_index`` pixels count in no column), e.g. to weight tile sampling by class.
+
     A file that also outlines where it was annotated (e.g. ``roi``
     rectangles) is handled with ``roi_class``: those objects become the ROI, and
     mask pixels outside them are ``ignore_index`` rather than background, so
@@ -593,12 +597,16 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
     def result(self) -> TilingResult:
         """Tissue tiles that overlap the ground truth enough; computed in ``__init__``."""
         result = TileGenerator.result.func(self)
-        fractions = np.zeros(len(result))
+        class_fraction = np.zeros((len(result), max(self.labels) + 1))
         background = np.zeros(len(result), bool)  # no label and nothing ignored
         for i, (x, y) in enumerate(result.coords):
             mask = self._mask(x, y, result)
-            fractions[i] = self._labelled(mask).mean()
+            counts = np.bincount(mask.ravel(), minlength=256)
+            if self.roi_polygons is not None:
+                counts[self.ignore_index] = 0
+            class_fraction[i] = counts[: class_fraction.shape[1]] / mask.size
             background[i] = not mask.any()
+        fractions = class_fraction[:, 1:].sum(axis=1)
         keep = fractions >= self.object_mask_overlap
         rule = f">= {100 * self.object_mask_overlap:.0f}% ground truth"
         negatives = np.flatnonzero(~keep & background)
@@ -608,6 +616,7 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
             keep[rng.choice(negatives, count, replace=False)] = True
             rule += f" plus {count} without"
         self.object_fraction = fractions[keep]
+        self.class_fraction = class_fraction[keep]
         return self._keep(result, keep, rule)
 
     def tile_mask(self, index: int) -> np.ndarray:
@@ -650,12 +659,6 @@ class SegmentationTileGenerator(_GroundTruthTileGenerator):
             mask[inside == 0] = self.ignore_index
         return mask
 
-    def _labelled(self, mask: np.ndarray) -> np.ndarray:
-        """Pixels with a ground-truth label, i.e. neither background nor ignored."""
-        if self.roi_polygons is None:
-            return mask > 0
-        return (mask > 0) & (mask != self.ignore_index)
-
 
 class DetectionTileGenerator(_GroundTruthTileGenerator):
     """A :class:`TileGenerator` that also yields each tile's ground-truth boxes.
@@ -671,6 +674,10 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
     ``{"boxes": (N, 4) float32, "labels": (N,) int64}``: boxes in COCO
     ``[x, y, width, height]`` tile pixels (top-left origin), labels from
     ``class_map`` (1 for every object without one).
+
+    Per selected tile, ``object_count`` is its number of boxes and
+    ``class_count[i, k]`` the number with label ``k``, e.g. to weight tile
+    sampling by class.
 
     With ``roi_class``, unannotated objects outside the annotated region must
     never count as background. By default tiles must lie wholly inside it; with
@@ -765,15 +772,19 @@ class DetectionTileGenerator(_GroundTruthTileGenerator):
     def result(self) -> TilingResult:
         """Tissue tiles with enough objects; computed in ``__init__``."""
         result = TileGenerator.result.func(self)
-        counts = np.array(
-            [len(self._target(x, y, result)["labels"]) for x, y in result.coords], dtype=int
-        )
+        labels = [self._target(x, y, result)["labels"] for x, y in result.coords]
+        width = max(self.labels, default=0) + 1
+        class_count = np.array(
+            [np.bincount(lab, minlength=width) for lab in labels], dtype=int
+        ).reshape(len(labels), width)
+        counts = class_count.sum(axis=1)
         keep = counts >= self.min_objects
         if self.roi_polygons is not None and self.roi_fill is None:
             keep &= np.array(
                 [self._roi_mask(x, y, result).all() for x, y in result.coords], dtype=bool
             )
         self.object_count = counts[keep]
+        self.class_count = class_count[keep]
         rule = f">= {self.min_objects} object(s) {100 * self.min_box_visibility:.0f}% inside"
         return self._keep(result, keep, rule)
 

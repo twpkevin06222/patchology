@@ -128,6 +128,40 @@ def test_negative_sampling_seed(slide: ArrayReader, gt):
     assert coords(seed=7) == fixed != coords(seed=8)  # an explicit seed ignores it
 
 
+def test_class_fraction_matches_each_tile_mask(slide: ArrayReader, tmp_path):
+    # Two classes with a gap in label values, an ROI so some pixels are ignored,
+    # and negatives so all-background rows are included.
+    path = _write_gt(
+        tmp_path,
+        [
+            [_square(1152, 640, 2176, 1664)],
+            [_square(1536, 1024, 2048, 1536)],
+            [_square(1792, 1280, 2688, 1664)],
+        ],
+        classes=["roi", "tumor", "stroma"],
+    )
+    gen = SegmentationTileGenerator(
+        slide,
+        path,
+        object_mask_overlap=0.2,
+        negative_sampling=1.0,
+        seed=0,
+        class_map={"tumor": 1, "stroma": 3},
+        roi_class="roi",
+        tiling=TilingConfig(tile_size=128, tile_mpp=1.0, tissue_overlap=0.1),
+    )
+    assert gen.class_fraction.shape == (len(gen), 4)
+    for i in range(len(gen)):
+        mask = gen.tile_mask(i)
+        expected = [(mask == k).mean() for k in range(4)]
+        np.testing.assert_allclose(gen.class_fraction[i], expected)
+    np.testing.assert_allclose(gen.object_fraction, gen.class_fraction[:, 1:].sum(axis=1))
+    negatives = gen.object_fraction == 0
+    assert negatives.any() and (gen.class_fraction[negatives, 0] == 1).all()
+    assert (gen.class_fraction[:, 1] > 0).any() and (gen.class_fraction[:, 3] > 0).any()
+    assert (gen.class_fraction.sum(axis=1) < 1).any()  # ignored pixels count in no column
+
+
 def test_hole_is_empty_in_mask(slide: ArrayReader, tmp_path):
     gt = _write_gt(tmp_path, [[_square(1024, 512, 3072, 2048), _square(1536, 1024, 2560, 1536)]])
     gen = SegmentationTileGenerator(slide, gt, object_mask_overlap=0.0, tiling=CONFIG)

@@ -57,6 +57,22 @@ def test_dark_grey_objects_are_background_but_dark_tissue_is_kept():
     assert baseline[20:80, 380:480].mean() > 0.99  # saturation alone calls the marker tissue
 
 
+def test_straight_grey_bands_are_background_but_straight_tissue_is_kept():
+    thumb = _thumbnail()
+    thumb[100:250, 150:350] = tissue_texture(150, 200)
+    rng = np.random.default_rng(2)
+    # Glass edge band along the bottom: unstained light grey, straight-edged.
+    thumb[370:390, :] = (190, 188, 182) + rng.integers(0, 3, (20, 500, 1))
+    # A straight strip of tissue: just as straight, but stained.
+    thumb[290:310, 50:450] = tissue_texture(20, 400)
+    baseline = detect_tissue(thumb, THUMB_MPP, TissueConfig(remove_dark_objects=False))
+    assert baseline[372:388].mean() > 0.99  # saturation alone calls the band tissue
+    mask = detect_tissue(thumb, THUMB_MPP)
+    assert not mask[360:].any()
+    assert mask[292:308, 60:440].mean() > 0.99
+    assert mask[110:240, 160:340].mean() > 0.99
+
+
 def test_small_debris_removed_and_small_holes_filled():
     thumb = _thumbnail()
     thumb[100:300, 150:350] = tissue_texture(200, 200)

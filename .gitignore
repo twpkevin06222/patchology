@@ -15,3 +15,6 @@ src/patchology/references/stain_reference.png
 
 # Claude Code local settings
 .claude/
+
+# Local handoff notes
+HANDOFF.md

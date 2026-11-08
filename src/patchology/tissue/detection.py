@@ -20,6 +20,16 @@ DARK_MAX_CHROMA = 25
 DARK_MAX_TEXTURE = 8.0
 DARK_OPENING_UM = 40.0
 
+# Glass and coverslip edges also leave light grey bands that pass the saturation
+# threshold. Their outlines are mostly long straight lines and they carry no stain: on
+# the TIGER val set such bands had >= 53% of the outline on straight runs of 300 um or
+# more, a 99th-percentile chroma <= 16 and a median value >= 170. Straight strips of
+# real tissue reached a chroma of 26+.
+GREY_MAX_CHROMA = 20
+STRAIGHT_MIN_FRACTION = 0.5
+STRAIGHT_MIN_SEGMENT_UM = 300.0
+STRAIGHT_TOLERANCE_UM = 16.0
+
 
 @dataclass(frozen=True)
 class TissueConfig:
@@ -51,7 +61,9 @@ class TissueConfig:
         remove_dark_objects: Treat dark grey regions of at least
             ``min_tissue_area_um2`` that are flat or touch the image border,
             such as fiducial markers, labels and slide edges, and their colour
-            fringe as background.
+            fringe as background; also drop unstained grey tissue regions
+            outlined mostly by straight lines, such as glass edge bands
+            (:func:`straight_grey_objects`).
     """
 
     method: ThresholdMethod = "triangle"
@@ -101,6 +113,8 @@ def detect_tissue(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConf
 
     pixel_area = mpp * mpp
     mask = remove_small_objects(mask, config.min_tissue_area_um2 / pixel_area)
+    if config.remove_dark_objects:
+        mask &= ~straight_grey_objects(mask, rgb, mpp)
     mask = fill_small_holes(mask, config.max_hole_area_um2 / pixel_area)
     return mask
 
@@ -140,6 +154,39 @@ def dark_objects(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConfi
     touching[labels[seeds > 0]] = True
     artifacts = (big & (flat | touching))[labels]
     return cv2.dilate(artifacts.astype(np.uint8), kernel).astype(bool)
+
+
+def straight_grey_objects(mask: np.ndarray, rgb: np.ndarray, mpp: float) -> np.ndarray:
+    """Return the components of ``mask`` that are light grey (no stain) and whose outline
+    runs mostly along long straight lines, such as bands along glass or coverslip edges."""
+    mask = mask.astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    pixels = rgb.astype(np.int16)
+    value = pixels.max(axis=2)
+    chroma = value - pixels.min(axis=2)
+    drop = np.zeros(count, bool)
+    for i in range(1, count):
+        x, y, w, h = stats[i, :4]
+        region = labels[y : y + h, x : x + w] == i
+        # Dark grey is left to dark_objects, whose texture test keeps strong IHC stain.
+        grey = (
+            np.percentile(chroma[y : y + h, x : x + w][region], 99) < GREY_MAX_CHROMA
+            and np.median(value[y : y + h, x : x + w][region]) >= DARK_MAX_VALUE
+        )
+        if grey:
+            drop[i] = _straight_fraction(region, mpp) >= STRAIGHT_MIN_FRACTION
+    return drop[labels]
+
+
+def _straight_fraction(region: np.ndarray, mpp: float) -> float:
+    """Fraction of the outline of ``region`` on straight runs of ``STRAIGHT_MIN_SEGMENT_UM``."""
+    # Padding closes the outline along the image border, which counts as straight.
+    padded = np.pad(region, 1).astype(np.uint8)
+    contours, _ = cv2.findContours(padded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    contour = max(contours, key=len)
+    corners = cv2.approxPolyDP(contour, STRAIGHT_TOLERANCE_UM / mpp, True)[:, 0].astype(float)
+    sides = np.linalg.norm(np.roll(corners, -1, axis=0) - corners, axis=1)
+    return sides[sides >= STRAIGHT_MIN_SEGMENT_UM / mpp].sum() / cv2.arcLength(contour, True)
 
 
 def remove_small_objects(mask: np.ndarray, min_area_px: float) -> np.ndarray:

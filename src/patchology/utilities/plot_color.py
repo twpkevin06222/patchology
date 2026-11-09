@@ -27,7 +27,8 @@ def plot(slide_path: Path, reference: Path | None, out_path: Path) -> None:
     target_stains = reference or REFERENCE_STAINS
     with open_slide(slide_path, backend="openslide") as slide:
         result = TilingPipeline(
-            tiling=tiling, color=ColorConfig(stain_normalization="macenko", stain_target=target_stains)
+            tiling=tiling,
+            color=ColorConfig(icc=True, stain_normalization="macenko", stain_target=target_stains),
         ).run(slide)
         # Stains re-estimated on uncalibrated colours, for Macenko without ICC.
         no_icc = TilingPipeline(

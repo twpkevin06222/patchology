@@ -78,13 +78,27 @@ def test_icc_runs_before_stain_normalization(slide_image, monkeypatch):
 
     real = tiler.macenko_normalize
     monkeypatch.setattr(tiler, "macenko_normalize", lambda *a: calls.append("stain") or real(*a))
-    color = ColorConfig(stain_normalization="macenko", stain_sample_tiles=4)
+    color = ColorConfig(icc=True, stain_normalization="macenko", stain_sample_tiles=4)
     result = TilingPipeline(tiling=TilingConfig(tile_size=128, tile_mpp=2.0), color=color).run(
         reader
     )
     calls.clear()
     result.read_tile(reader, 0)
     assert calls == ["icc", "stain"]
+
+
+def test_icc_applies_to_tiles_not_detection(slide_image, monkeypatch):
+    reader = ArrayReader(slide_image)
+    calls = []
+    monkeypatch.setattr(reader, "apply_icc", lambda rgb: calls.append(rgb.shape) or rgb)
+    tiling = TilingConfig(tile_size=128, tile_mpp=2.0)
+    result = TilingPipeline(tiling=tiling, color=ColorConfig(icc=True)).run(reader)
+    assert len(result) > 0 and calls == []  # detection thumbnail stays raw
+    result.read_tile(reader, 0)
+    assert calls == [(128, 128, 3)]
+    calls.clear()
+    TilingPipeline(tiling=tiling).run(reader).read_tile(reader, 0)
+    assert calls == []  # off by default
 
 
 def test_pipeline_stain_normalization(slide: ArrayReader, tmp_path):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import json
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -119,9 +120,13 @@ type StainSource = Stains | np.ndarray | Image.Image | str | Path
 def load_stains(source: StainSource) -> Stains:
     """Return ``source`` as :class:`Stains`, estimating them from an RGB image or path.
 
+    A ``.json`` path is read as saved stains (:meth:`Stains.to_dict`, as written
+    by ``patchology.utilities.estimate_stains``), not estimated.
+
     Raises:
         FileNotFoundError: ``source`` is a path that does not exist.
-        ValueError: The image cannot be read or has too few stained pixels.
+        ValueError: The image or JSON cannot be read, the JSON stains are
+            malformed, or the image has too few stained pixels.
     """
     if isinstance(source, Stains):
         return source
@@ -129,6 +134,8 @@ def load_stains(source: StainSource) -> Stains:
         path = Path(source)
         if not path.exists():
             raise FileNotFoundError(f"stain reference not found: {path}")
+        if path.suffix.lower() == ".json":
+            return _stains_from_json(path)
         try:
             with Image.open(path) as image:
                 source = image.convert("RGB")
@@ -143,6 +150,26 @@ def load_stains(source: StainSource) -> Stains:
         return Stains.estimate(rgb)
     except ValueError as e:
         raise ValueError(f"cannot estimate stains from reference: {e}") from e
+
+
+def _stains_from_json(path: Path) -> Stains:
+    try:
+        data = json.loads(path.read_text())
+        matrix = np.asarray(data["matrix"], dtype=np.float64)
+        max_concentrations = np.asarray(data["max_concentrations"], dtype=np.float64)
+    except (OSError, ValueError, TypeError, KeyError) as e:
+        raise ValueError(f"cannot read stains from {path}: {e!r}") from e
+    if matrix.shape != (3, 2) or max_concentrations.shape != (2,):
+        raise ValueError(
+            f"{path}: expected a (3, 2) matrix and (2,) max_concentrations, "
+            f"got {matrix.shape} and {max_concentrations.shape}"
+        )
+    norms = np.linalg.norm(matrix, axis=0)
+    if not (np.isfinite(matrix).all() and (norms > 0).all() and (max_concentrations > 0).all()):
+        raise ValueError(
+            f"{path}: stain vectors must be finite and non-zero, max_concentrations positive"
+        )
+    return Stains(matrix / norms, max_concentrations)
 
 
 def macenko_normalize(
@@ -178,9 +205,11 @@ class ColorConfig:
         stain_normalization: ``"macenko"`` to normalise H&E stains, or None.
         stain_target: What to normalise to: :class:`Stains`, or a reference
             RGB image (``(..., 3)`` uint8 array, e.g. a single pixel or a
-            tile; PIL image; or image path) whose stains are estimated.
+            tile; PIL image; or image path) whose stains are estimated, or a
+            ``.json`` file of saved stains (see
+            ``patchology.utilities.estimate_stains``).
             Defaults to :data:`REFERENCE_STAINS`; pass your own reference
-            image to match your data.
+            to match your data.
         stain_sample_tiles: Number of selected tiles, spread evenly over the
             slide, from which the slide's own stains are estimated.
     """

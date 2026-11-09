@@ -180,7 +180,10 @@ class FastSlideReader(SlideReader):
         objective = native.get("objective_magnification")
         if objective:
             props[PROPERTY_NAME_OBJECTIVE_POWER] = f"{float(objective):g}"
-        quickhash = slide.quickhash
+        try:
+            quickhash = slide.quickhash
+        except RuntimeError:  # not implemented for every format, e.g. iSyntax before 0.8.1
+            quickhash = None
         if quickhash:
             props[PROPERTY_NAME_QUICKHASH1] = quickhash
 

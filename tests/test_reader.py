@@ -135,3 +135,26 @@ def test_corrupt_file_fails_on_both_real_backends(tmp_path: Path):
     path.write_bytes(b"not a slide")
     with pytest.raises(SlideOpenError):
         open_slide(path, "fastslide")
+
+
+def test_fastslide_without_quickhash_still_opens():
+    # FastSlide 0.8.0 raises instead of returning a quickhash for iSyntax.
+    from patchology.reader.fastslide_backend import FastSlideReader
+
+    class NoQuickhash:
+        properties = (("vendor_key", "x"),)  # read through dict()
+        format = "iSyntax"
+        mpp = (0.25, 0.25)
+        bounds = ((0, 0), (100, 50))
+
+        @property
+        def quickhash(self):
+            raise RuntimeError("GetQuickHash not implemented for this reader")
+
+    reader = object.__new__(FastSlideReader)
+    reader._slide = NoQuickhash()
+    reader._level_dimensions = ((100, 50),)
+    reader._level_downsamples = (1.0,)
+    props = reader._build_properties()
+    assert "openslide.quickhash-1" not in props
+    assert props["openslide.vendor"] == "isyntax" and props["openslide.mpp-x"] == "0.25"

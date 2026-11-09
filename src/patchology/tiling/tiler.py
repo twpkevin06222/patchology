@@ -418,9 +418,9 @@ class TilingPipeline:
                 "running out of memory; re-save it as a pyramidal slide"
             )
         slide_mpp = slide_mpp or self.slide_mpp(slide)
+        # Stored pixels, never ICC: detection thresholds are tuned on them, and some
+        # profiles (e.g. Philips iSyntax) map most of the slide to white.
         thumbnail = slide.read_at_downsample(self.tissue.thumbnail_mpp / slide_mpp)
-        if self.color.icc:
-            thumbnail = slide.apply_icc(thumbnail)
         thumb_mpp = slide_mpp * slide.dimensions[0] / thumbnail.shape[1]
 
         if tissue_mask is not None:
@@ -457,7 +457,7 @@ class TilingPipeline:
         if len(result) == 0:
             raise ValueError(f"{slide.path}: no tiles to estimate stains from")
         count = min(len(result), self.color.stain_sample_tiles)
-        # Tiles are ICC calibrated here since source_stains is not set yet.
+        # Tiles get ICC (if enabled) but no stain normalisation, since source_stains is not set yet.
         indices = np.linspace(0, len(result) - 1, count).round().astype(int)
         tiles = np.stack(
             list(

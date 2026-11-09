@@ -170,10 +170,11 @@ class ColorConfig:
     """Colour processing applied to tiles, in this order.
 
     Attributes:
-        icc: Convert pixels from the slide's embedded ICC profile to sRGB.
-            Slides without a profile are left unchanged. Also applied to the
-            detection thumbnail, so masks and stain estimates see the same
-            colours as the tiles.
+        icc: Convert tile pixels from the slide's embedded ICC profile to
+            sRGB. Off by default. Slides without a profile are left unchanged.
+            Tissue and artifact detection always run on the stored pixels,
+            which their thresholds are tuned on; stain estimates use the tiles,
+            so they follow this setting.
         stain_normalization: ``"macenko"`` to normalise H&E stains, or None.
         stain_target: What to normalise to: :class:`Stains`, or a reference
             RGB image (``(..., 3)`` uint8 array, e.g. a single pixel or a
@@ -184,7 +185,7 @@ class ColorConfig:
             slide, from which the slide's own stains are estimated.
     """
 
-    icc: bool = True
+    icc: bool = False
     stain_normalization: StainMethod | None = None
     stain_target: StainSource = REFERENCE_STAINS
     stain_sample_tiles: int = 64

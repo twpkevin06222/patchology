@@ -73,7 +73,7 @@ from patchology import ColorConfig, TileGenerator
 with TileGenerator("slide.svs", color=ColorConfig(stain_normalization="macenko")) as gen:
     gen.properties, gen.dimensions, gen.mpp, gen.icc_profile  # no tiling needed
     gen.tissue_mask, gen.artifact_mask, gen.coords, gen.source_stains  # computed in __init__
-    for (x, y), tile in gen:  # ICC -> tissue -> artifacts -> tiles -> stain norm
+    for (x, y), tile in gen:  # tissue -> artifacts -> tiles -> ICC (opt-in) -> stain norm
         ...
 ```
 
@@ -323,8 +323,8 @@ thumbnail a little differently. Reproduce with
    A tile is kept if at least `tissue_overlap` (default 0.1, i.e. 10%) of its
    area overlaps tissue. Coordinates are level-0 top-left corners.
 5. **Colour** (`ColorConfig`): tiles read through `read_tile` / `iter_tiles`
-   are first converted from the slide's embedded ICC profile to sRGB
-   (`icc=True`, default; slides without a profile are unchanged), then
+   are optionally converted from the slide's embedded ICC profile to sRGB
+   (`icc=True`; off by default; slides without a profile are unchanged), then
    optionally stain normalised with Macenko
    (`stain_normalization="macenko"`). The slide's stains are estimated once
    from `stain_sample_tiles` selected tiles and mapped to `stain_target`:
@@ -344,11 +344,17 @@ pipeline = TilingPipeline(
 ## Colour calibration and stain normalisation
 
 Scanners store pixels in their own colour space and record it as an embedded
-ICC profile. ICC calibration (on by default) converts tiles to standard sRGB,
-so they look as the scanner vendor intended and match across scanners. Stain
-normalisation then maps the slide's hematoxylin and eosin colours onto a
-target, which reduces staining differences between labs and batches. ICC runs
-first, so stains are estimated on calibrated colours.
+ICC profile. ICC calibration (`ColorConfig(icc=True)`, off by default)
+converts tiles to standard sRGB, so they look as the scanner vendor intended
+and match across scanners. Stain normalisation then maps the slide's
+hematoxylin and eosin colours onto a target, which reduces staining
+differences between labs and batches. ICC runs first, so with it on, stains
+are estimated on calibrated colours.
+
+ICC applies to tiles only. Tissue and artifact detection always run on the
+stored pixels, which their thresholds are tuned on: some profiles (for
+example on Philips iSyntax slides) map most of a slide to white, which would
+hide the tissue.
 
 ![ICC calibration and stain normalisation](https://raw.githubusercontent.com/twpkevin06222/patchology/main/docs/figures/color_comparison.png)
 *Three 512 px tiles at 0.5 µm/px: (a) as stored, (b) after ICC calibration to

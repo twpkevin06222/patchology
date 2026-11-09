@@ -1,6 +1,6 @@
 [project]
 name = "patchology"
-version = "0.1.0"
+version = "1.0.0"
 description = "Whole slide image tissue detection, artifact removal and tiling."
 readme = "README.md"
 license = "Apache-2.0"
@@ -28,7 +28,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 # Local stain reference images are user data, never packaged.
-exclude = ["src/patchology/references/"]
+exclude = ["src/patchology/references/", "docs/"]  # README figures are served from GitHub
 
 [dependency-groups]
 dev = ["pytest", "ruff"]

@@ -329,8 +329,8 @@ thumbnail a little differently. Reproduce with
    (`stain_normalization="macenko"`). The slide's stains are estimated once
    from `stain_sample_tiles` selected tiles and mapped to `stain_target`:
    the classic Macenko reference vectors (`REFERENCE_STAINS`) by default, or
-   your own reference as an image path, PIL image, uint8 RGB array, or
-   `Stains`.
+   your own reference as an image path, PIL image, uint8 RGB array,
+   `Stains`, or a `.json` file of saved stains.
 
 ```python
 from patchology import ColorConfig, TilingPipeline
@@ -365,6 +365,22 @@ The classic `REFERENCE_STAINS` target gives a pale eosin (as in (c)); pass
 your own reference tile, e.g. `stain_target="my_reference.png"`, to match your
 data. Regenerate the figure with
 `uv run --with matplotlib python -m patchology.utilities.plot_color slide.svs [reference.png]`.
+
+To normalise to your own cohort instead, estimate its stains from a set of
+slides. `estimate_stains` estimates each slide's stains as tiling does, writes
+their median to JSON and lists the slides furthest from it (often a wrong stain
+type or a failed stain):
+
+```bash
+python -m patchology.utilities.estimate_stains cohort_stains.json slides/ --max-slides 100
+```
+
+```python
+ColorConfig(stain_normalization="macenko", stain_target="cohort_stains.json")
+```
+
+Pass H&E slides only (Macenko assumes two stains), and estimate with the same
+`icc` setting you tile with (`--icc` for `icc=True`).
 
 ## Visualization
 

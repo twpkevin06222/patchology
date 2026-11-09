@@ -44,7 +44,10 @@ def plot(slide_path: Path, reference: Path | None, out_path: Path) -> None:
             raw = slide.read_region_scaled((x, y), result.downsample, (TILE, TILE))
             icc = slide.apply_icc(raw)
             panels.append(
-                ((x, y), [raw, icc, result.read_tile(slide, int(i)), no_icc.read_tile_at(slide, x, y)])
+                (
+                    (x, y),
+                    [raw, icc, result.read_tile(slide, int(i)), no_icc.read_tile_at(slide, x, y)],
+                )
             )
         has_icc = slide.icc_profile is not None
 

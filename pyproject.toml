@@ -8,6 +8,30 @@ authors = [
     { name = "twpkevin06222", email = "tengwaipokevin@gmail.com" }
 ]
 requires-python = ">=3.12"
+keywords = [
+    "pathology",
+    "computational-pathology",
+    "whole-slide-image",
+    "wsi",
+    "tiling",
+    "tissue-detection",
+    "stain-normalization",
+    "openslide",
+    "fastslide",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Typing :: Typed",
+]
 dependencies = [
     "fastslide>=0.8.0",
     "loguru>=0.7.3",
@@ -17,6 +41,12 @@ dependencies = [
     "openslide-python>=1.4.3",
     "pillow>=10.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/twpkevin06222/patchology"
+Source = "https://github.com/twpkevin06222/patchology"
+Issues = "https://github.com/twpkevin06222/patchology/issues"
+Changelog = "https://github.com/twpkevin06222/patchology/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

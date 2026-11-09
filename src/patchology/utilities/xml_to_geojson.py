@@ -52,9 +52,7 @@ def asap_to_geojson(xml_path: str | Path) -> dict:
         points = [[_number(c.get("X")), _number(c.get("Y"))] for c in coords]
         if kind in POLYGON_TYPES:
             if len(points) < 3:
-                logger.warning(
-                    "{}: skipping {} with {} vertices", xml_path.name, name, len(points)
-                )
+                logger.warning("{}: skipping {} with {} vertices", xml_path.name, name, len(points))
                 continue
             geometry = {
                 "type": "Polygon",
@@ -63,17 +61,13 @@ def asap_to_geojson(xml_path: str | Path) -> dict:
         elif kind in POINT_TYPES:
             geometry = {"type": "MultiPoint", "coordinates": points}
         else:
-            logger.warning(
-                "{}: skipping {} of unknown type {}", xml_path.name, name, kind
-            )
+            logger.warning("{}: skipping {} of unknown type {}", xml_path.name, name, kind)
             continue
         group = ann.get("PartOfGroup")
         properties = {"name": name}
         if group and group != "None":
             properties["classification"] = {"name": group}
-        features.append(
-            {"type": "Feature", "geometry": geometry, "properties": properties}
-        )
+        features.append({"type": "Feature", "geometry": geometry, "properties": properties})
     return {"type": "FeatureCollection", "features": features}
 
 

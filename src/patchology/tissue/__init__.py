@@ -7,7 +7,13 @@ from patchology.tissue.artifacts import (
     detect_blur,
     detect_pen_marks,
 )
-from patchology.tissue.detection import TissueConfig, detect_tissue
+from patchology.tissue.detection import (
+    GreyObjectConfig,
+    GreyRegion,
+    TissueConfig,
+    detect_tissue,
+    tissue_regions,
+)
 from patchology.tissue.mask import MaskSource, SlideMask, load_mask
 from patchology.tissue.roi import (
     find_roi,
@@ -21,6 +27,8 @@ from patchology.tissue.roi import (
 __all__ = [
     "PEN_HSV_RANGES",
     "ArtifactConfig",
+    "GreyObjectConfig",
+    "GreyRegion",
     "MaskSource",
     "SlideMask",
     "TissueConfig",
@@ -35,4 +43,5 @@ __all__ = [
     "load_roi",
     "rasterize_polygons",
     "roi_matches_slide",
+    "tissue_regions",
 ]

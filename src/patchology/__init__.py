@@ -20,6 +20,7 @@ from patchology.tiling import (
 )
 from patchology.tissue import (
     ArtifactConfig,
+    GreyObjectConfig,
     SlideMask,
     TissueConfig,
     detect_pen_marks,
@@ -43,6 +44,7 @@ __all__ = [
     "Backend",
     "ColorConfig",
     "DetectionTileGenerator",
+    "GreyObjectConfig",
     "SegmentationTileGenerator",
     "SlideMask",
     "SlideOpenError",

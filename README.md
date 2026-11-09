@@ -306,7 +306,20 @@ thumbnail a little differently. Reproduce with
    `thumbnail_mpp` (default 8 µm/px) and HSV saturation is thresholded
    (`triangle` by default; `otsu`, `otsu_gray` and `fixed` are available),
    then closed, with small fragments removed and small holes filled. All sizes
-   are in microns.
+   are in microns. Two grey-object rules then drop what saturation wrongly
+   passes as tissue: dark grey markers, labels and slide edges, and light grey
+   straight bands along glass and coverslip edges (`remove_dark_objects`,
+   on by default). Their thresholds are in `GreyObjectConfig`; to recalibrate
+   them for a new scanner, stain or format, see what they remove first:
+
+   ```bash
+   python -m patchology.utilities.inspect_tissue out/ slides/ --set band_max_chroma=24
+   ```
+
+   It writes an overlay per slide (removed regions and near misses boxed and
+   numbered) and `regions.csv` with each region's measurements, using the
+   values given with `--set`. Then pass the values you settle on:
+   `TissueConfig(grey_objects=GreyObjectConfig(band_max_chroma=24))`.
 2. **Custom mask**: pass `tissue_mask=` to `run()` (array, PIL image, `.npy`
    or image path, or `SlideMask`) to replace detection. The mask may be at any
    resolution and is assumed to cover the whole slide.

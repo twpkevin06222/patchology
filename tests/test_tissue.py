@@ -4,6 +4,7 @@ import pytest
 
 from patchology.tissue import (
     ArtifactConfig,
+    GreyObjectConfig,
     SlideMask,
     TissueConfig,
     blur_scores,
@@ -11,6 +12,7 @@ from patchology.tissue import (
     detect_pen_marks,
     detect_tissue,
     load_mask,
+    tissue_regions,
 )
 from patchology.tissue.detection import fill_small_holes, remove_small_objects
 
@@ -188,3 +190,38 @@ def test_load_mask_sources(tmp_path):
 def test_mask_with_wrong_aspect_ratio_warns(caplog):
     SlideMask.from_array(np.ones((10, 10)), (4000, 1000))
     assert "aspect ratio" in caplog.text
+
+
+def _grey_artifact_thumbnail():
+    thumb = _thumbnail()
+    thumb[100:250, 150:350] = tissue_texture(150, 200)
+    rng = np.random.default_rng(3)
+    thumb[20:80, 380:480] = (35, 35, 30) + rng.integers(0, 3, (60, 100, 1))  # flat black marker
+    thumb[370:390, :] = (190, 188, 182) + rng.integers(0, 3, (20, 500, 1))  # glass edge band
+    return thumb
+
+
+def test_tissue_regions_report_what_each_rule_removed():
+    thumb = _grey_artifact_thumbnail()
+    mask, regions = tissue_regions(thumb, THUMB_MPP)
+    np.testing.assert_array_equal(mask, detect_tissue(thumb, THUMB_MPP))
+    removed = {(r.rule, r.bbox[1] // 100) for r in regions if r.removed}
+    assert removed == {("dark", 0), ("band", 3)}  # marker near the top, band at the bottom
+    kept = [r for r in regions if not r.removed]
+    assert len(kept) == 1 and kept[0].rule == "band" and kept[0].chroma > 26  # the tissue
+    assert tissue_regions(thumb, THUMB_MPP, TissueConfig(remove_dark_objects=False))[1] == []
+
+
+def test_grey_object_thresholds_are_configurable():
+    thumb = _grey_artifact_thumbnail()
+    strict = TissueConfig(grey_objects=GreyObjectConfig(band_max_chroma=3))  # band chroma ~6
+    assert detect_tissue(thumb, THUMB_MPP, strict)[372:388].mean() > 0.99
+    assert not detect_tissue(thumb, THUMB_MPP)[360:].any()
+
+
+@pytest.mark.parametrize(
+    "kwargs", [{"max_chroma": 0}, {"max_texture": -1.0}, {"straight_min_fraction": 1.5}]
+)
+def test_grey_object_config_rejects_bad_values(kwargs):
+    with pytest.raises(ValueError):
+        GreyObjectConfig(**kwargs)

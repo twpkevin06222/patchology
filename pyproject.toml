@@ -43,6 +43,7 @@ extend-immutable-calls = [
     "patchology.color.ColorConfig",
     "patchology.tiling.tiler.TilingConfig",
     "patchology.tissue.artifacts.ArtifactConfig",
+    "patchology.tissue.detection.GreyObjectConfig",
     "patchology.tissue.detection.TissueConfig",
 ]
 

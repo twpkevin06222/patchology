@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal
 
 import cv2
@@ -10,25 +10,86 @@ import numpy as np
 
 ThresholdMethod = Literal["triangle", "otsu", "otsu_gray", "fixed"]
 
-# Black fiducials and dark slide edges are grey, but HSV saturation, (max - min) / max,
-# blows up on dark pixels and passes them as tissue. Absolute chroma (max - min) stays
-# low on them (<= ~30) and high on dark H&E tissue (>= ~45 on the TIGER val set). Strong
-# IHC stain can be dark grey too, so grey regions also need to be flat (3x3 px intensity
-# SD: <= ~5.5 on artifacts, >= ~9 on IHC tissue in ACROBAT val) or touch the border.
-DARK_MAX_VALUE = 160
-DARK_MAX_CHROMA = 25
-DARK_MAX_TEXTURE = 8.0
-DARK_OPENING_UM = 40.0
 
-# Glass and coverslip edges also leave light grey bands that pass the saturation
-# threshold. Their outlines are mostly long straight lines and they carry no stain: on
-# the TIGER val set such bands had >= 53% of the outline on straight runs of 300 um or
-# more, a 99th-percentile chroma <= 16 and a median value >= 170. Straight strips of
-# real tissue reached a chroma of 26+.
-GREY_MAX_CHROMA = 20
-STRAIGHT_MIN_FRACTION = 0.5
-STRAIGHT_MIN_SEGMENT_UM = 300.0
-STRAIGHT_TOLERANCE_UM = 16.0
+@dataclass(frozen=True)
+class GreyObjectConfig:
+    """Thresholds of the grey-object rules of :func:`detect_tissue`.
+
+    Saturation, (max - min) / max, blows up on dark pixels, so black fiducials,
+    labels and slide edges pass as tissue; glass and coverslip edges leave light
+    grey bands that pass too. Both are grey, so both rules test absolute chroma
+    (max - min of RGB). Defaults sit inside gaps measured on the TIGER and ACROBAT
+    validation sets (noted per attribute); recalibrate with
+    ``patchology.utilities.inspect_tissue``.
+
+    Attributes:
+        max_value: Dark rule: pixels darker than this (max of RGB) can be dark
+            objects. Also the light-band rule's lower bound on a region's median
+            value, so dark grey regions are left to the dark rule.
+        max_chroma: Dark rule: pixels with chroma below this can be dark objects
+            (artifacts <= ~30, dark H&E tissue >= ~45).
+        max_texture: Dark rule: a dark region is flat, so an artifact, when its
+            median 3x3 px intensity SD is below this (artifacts <= ~5.5, strongly
+            stained IHC tissue >= ~9). Grainy dark regions are still removed when
+            they touch the image border or a flat artifact.
+        opening_um: Dark rule: opening that drops scattered grey pixels inside
+            tissue (pigment, nuclei) before regions are formed.
+        band_max_chroma: Light-band rule: a tissue region is unstained grey when
+            its 99th-percentile chroma is below this (glass bands <= 16,
+            straight tissue strips >= 26).
+        straight_min_fraction: Light-band rule: an unstained region is dropped
+            when at least this fraction of its outline lies on straight runs
+            (glass bands >= 0.53); the image border counts as straight.
+        straight_min_segment_um: Length from which an outline run counts as straight.
+        straight_tolerance_um: Deviation allowed along a straight run.
+    """
+
+    max_value: int = 160
+    max_chroma: int = 25
+    max_texture: float = 8.0
+    opening_um: float = 40.0
+    band_max_chroma: int = 20
+    straight_min_fraction: float = 0.5
+    straight_min_segment_um: float = 300.0
+    straight_tolerance_um: float = 16.0
+
+    def __post_init__(self) -> None:
+        for name, value in asdict(self).items():
+            if not value > 0:
+                raise ValueError(f"GreyObjectConfig.{name} must be positive, got {value}")
+        if self.straight_min_fraction > 1:
+            raise ValueError(
+                f"straight_min_fraction must be in (0, 1], got {self.straight_min_fraction}"
+            )
+
+
+@dataclass(frozen=True)
+class GreyRegion:
+    """A region a grey-object rule measured, as reported by :func:`tissue_regions`.
+
+    Attributes:
+        rule: ``"dark"`` (dark grey candidates) or ``"band"`` (every tissue
+            region, tested as a light grey straight band).
+        bbox: ``(x, y, w, h)`` in thumbnail pixels.
+        area_um2: Region area.
+        value: Median of max(R, G, B).
+        chroma: Median (dark) or 99th percentile (band) of max - min of RGB.
+        texture: Dark only: median 3x3 px intensity SD; NaN for bands.
+        straight_fraction: Band only: outline fraction on straight runs; NaN
+            for dark regions.
+        touching: Dark only: touches the image border or a flat artifact.
+        removed: The rule made the region background.
+    """
+
+    rule: Literal["dark", "band"]
+    bbox: tuple[int, int, int, int]
+    area_um2: float
+    value: float
+    chroma: float
+    texture: float
+    straight_fraction: float
+    touching: bool
+    removed: bool
 
 
 @dataclass(frozen=True)
@@ -64,6 +125,7 @@ class TissueConfig:
             fringe as background; also drop unstained grey tissue regions
             outlined mostly by straight lines, such as glass edge bands
             (:func:`straight_grey_objects`).
+        grey_objects: Thresholds of those two rules.
     """
 
     method: ThresholdMethod = "triangle"
@@ -75,6 +137,7 @@ class TissueConfig:
     min_tissue_area_um2: float = 50_000.0
     max_hole_area_um2: float = 50_000.0
     remove_dark_objects: bool = True
+    grey_objects: GreyObjectConfig = GreyObjectConfig()
 
 
 def detect_tissue(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConfig()) -> np.ndarray:
@@ -85,8 +148,21 @@ def detect_tissue(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConf
         mpp: Microns per pixel of ``rgb``.
         config: Detection settings.
     """
+    return tissue_regions(rgb, mpp, config)[0]
+
+
+def tissue_regions(
+    rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConfig()
+) -> tuple[np.ndarray, list[GreyRegion]]:
+    """:func:`detect_tissue`, plus every region the grey-object rules measured.
+
+    For calibrating :class:`GreyObjectConfig`; the regions are empty when
+    ``remove_dark_objects`` is off.
+    """
+    regions: list[GreyRegion] = []
     if config.remove_dark_objects:
-        rgb = np.where(dark_objects(rgb, mpp, config)[..., None], np.uint8(255), rgb)
+        dark, regions = _dark_objects(rgb, mpp, config)
+        rgb = np.where(dark[..., None], np.uint8(255), rgb)
     if config.method == "otsu_gray":
         signal = 255 - cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
     elif config.method in ("triangle", "otsu", "fixed"):
@@ -114,20 +190,28 @@ def detect_tissue(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConf
     pixel_area = mpp * mpp
     mask = remove_small_objects(mask, config.min_tissue_area_um2 / pixel_area)
     if config.remove_dark_objects:
-        mask &= ~straight_grey_objects(mask, rgb, mpp)
+        bands, band_regions = _straight_grey_objects(mask, rgb, mpp, config.grey_objects)
+        mask &= ~bands
+        regions += band_regions
     mask = fill_small_holes(mask, config.max_hole_area_um2 / pixel_area)
-    return mask
+    return mask, regions
 
 
 def dark_objects(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConfig()) -> np.ndarray:
     """Return a mask of solid dark grey regions in ``rgb``, grown to cover their colour fringe."""
+    return _dark_objects(rgb, mpp, config)[0]
+
+
+def _dark_objects(
+    rgb: np.ndarray, mpp: float, config: TissueConfig
+) -> tuple[np.ndarray, list[GreyRegion]]:
+    grey = config.grey_objects
     pixels = rgb.astype(np.int16)
     value = pixels.max(axis=2)
-    dark = ((value < DARK_MAX_VALUE) & (value - pixels.min(axis=2) < DARK_MAX_CHROMA)).astype(
-        np.uint8
-    )
+    chroma = value - pixels.min(axis=2)
+    dark = ((value < grey.max_value) & (chroma < grey.max_chroma)).astype(np.uint8)
     # Opening drops scattered grey pixels inside tissue, such as pigment and nuclei.
-    open_px = _odd(DARK_OPENING_UM / mpp)
+    open_px = _odd(grey.opening_um / mpp)
     if open_px > 1:
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_px, open_px))
         dark = cv2.morphologyEx(dark, cv2.MORPH_OPEN, kernel)
@@ -139,11 +223,15 @@ def dark_objects(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConfi
     v = value.astype(np.float32)
     mean = cv2.blur(v, (3, 3))
     texture = np.sqrt(np.maximum(cv2.blur(v * v, (3, 3)) - mean * mean, 0))
-    flat = np.zeros(count, bool)
+    medians = {}
     for i in np.flatnonzero(big):
         x, y, w, h = stats[i, :4]
         region = labels[y : y + h, x : x + w] == i
-        flat[i] = np.median(texture[y : y + h, x : x + w][region]) < DARK_MAX_TEXTURE
+        box = (slice(y, y + h), slice(x, x + w))
+        medians[i] = [np.median(a[box][region]) for a in (value, chroma, texture)]
+    flat = np.zeros(count, bool)
+    for i, (_, _, region_texture) in medians.items():
+        flat[i] = region_texture < grey.max_texture
 
     # Grainy slide edges lie along the image border or beside a flat artifact.
     fringe_px = 2 * _odd(config.smoothing_um / mpp) + 1
@@ -152,41 +240,78 @@ def dark_objects(rgb: np.ndarray, mpp: float, config: TissueConfig = TissueConfi
     seeds[[0, -1], :] = seeds[:, [0, -1]] = 1
     touching = np.zeros(count, bool)
     touching[labels[seeds > 0]] = True
-    artifacts = (big & (flat | touching))[labels]
-    return cv2.dilate(artifacts.astype(np.uint8), kernel).astype(bool)
+    removed = big & (flat | touching)
+    regions = [
+        GreyRegion(
+            rule="dark",
+            bbox=tuple(int(n) for n in stats[i, :4]),
+            area_um2=float(stats[i, cv2.CC_STAT_AREA] * mpp * mpp),
+            value=float(region_value),
+            chroma=float(region_chroma),
+            texture=float(region_texture),
+            straight_fraction=float("nan"),
+            touching=bool(touching[i]),
+            removed=bool(removed[i]),
+        )
+        for i, (region_value, region_chroma, region_texture) in medians.items()
+    ]
+    return cv2.dilate(removed[labels].astype(np.uint8), kernel).astype(bool), regions
 
 
-def straight_grey_objects(mask: np.ndarray, rgb: np.ndarray, mpp: float) -> np.ndarray:
+def straight_grey_objects(
+    mask: np.ndarray, rgb: np.ndarray, mpp: float, config: GreyObjectConfig = GreyObjectConfig()
+) -> np.ndarray:
     """Return the components of ``mask`` that are light grey (no stain) and whose outline
     runs mostly along long straight lines, such as bands along glass or coverslip edges."""
+    return _straight_grey_objects(mask, rgb, mpp, config)[0]
+
+
+def _straight_grey_objects(
+    mask: np.ndarray, rgb: np.ndarray, mpp: float, config: GreyObjectConfig
+) -> tuple[np.ndarray, list[GreyRegion]]:
     mask = mask.astype(np.uint8)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     pixels = rgb.astype(np.int16)
     value = pixels.max(axis=2)
     chroma = value - pixels.min(axis=2)
     drop = np.zeros(count, bool)
+    regions = []
     for i in range(1, count):
         x, y, w, h = stats[i, :4]
         region = labels[y : y + h, x : x + w] == i
-        # Dark grey is left to dark_objects, whose texture test keeps strong IHC stain.
-        grey = (
-            np.percentile(chroma[y : y + h, x : x + w][region], 99) < GREY_MAX_CHROMA
-            and np.median(value[y : y + h, x : x + w][region]) >= DARK_MAX_VALUE
+        box = (slice(y, y + h), slice(x, x + w))
+        region_chroma = np.percentile(chroma[box][region], 99)
+        region_value = np.median(value[box][region])
+        straight = _straight_fraction(region, mpp, config)
+        # Dark grey is left to the dark rule, whose texture test keeps strong IHC stain.
+        grey = region_chroma < config.band_max_chroma and region_value >= config.max_value
+        drop[i] = grey and straight >= config.straight_min_fraction
+        regions.append(
+            GreyRegion(
+                rule="band",
+                bbox=(int(x), int(y), int(w), int(h)),
+                area_um2=float(stats[i, cv2.CC_STAT_AREA] * mpp * mpp),
+                value=float(region_value),
+                chroma=float(region_chroma),
+                texture=float("nan"),
+                straight_fraction=float(straight),
+                touching=False,
+                removed=bool(drop[i]),
+            )
         )
-        if grey:
-            drop[i] = _straight_fraction(region, mpp) >= STRAIGHT_MIN_FRACTION
-    return drop[labels]
+    return drop[labels], regions
 
 
-def _straight_fraction(region: np.ndarray, mpp: float) -> float:
-    """Fraction of the outline of ``region`` on straight runs of ``STRAIGHT_MIN_SEGMENT_UM``."""
+def _straight_fraction(region: np.ndarray, mpp: float, config: GreyObjectConfig) -> float:
+    """Fraction of the outline of ``region`` on straight runs of ``straight_min_segment_um``."""
     # Padding closes the outline along the image border, which counts as straight.
     padded = np.pad(region, 1).astype(np.uint8)
     contours, _ = cv2.findContours(padded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     contour = max(contours, key=len)
-    corners = cv2.approxPolyDP(contour, STRAIGHT_TOLERANCE_UM / mpp, True)[:, 0].astype(float)
+    corners = cv2.approxPolyDP(contour, config.straight_tolerance_um / mpp, True)
+    corners = corners[:, 0].astype(float)
     sides = np.linalg.norm(np.roll(corners, -1, axis=0) - corners, axis=1)
-    return sides[sides >= STRAIGHT_MIN_SEGMENT_UM / mpp].sum() / cv2.arcLength(contour, True)
+    return sides[sides >= config.straight_min_segment_um / mpp].sum() / cv2.arcLength(contour, True)
 
 
 def remove_small_objects(mask: np.ndarray, min_area_px: float) -> np.ndarray:

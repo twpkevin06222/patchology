@@ -189,20 +189,16 @@ wheels = [
 
 [[package]]
 name = "patchology"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "fastslide" },
     { name = "loguru" },
     { name = "numpy" },
     { name = "opencv-python-headless" },
     { name = "openslide-bin" },
     { name = "openslide-python" },
     { name = "pillow" },
-]
-
-[package.optional-dependencies]
-fastslide = [
-    { name = "fastslide" },
 ]
 
 [package.dev-dependencies]
@@ -213,15 +209,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastslide", marker = "extra == 'fastslide'", specifier = ">=0.8.1" },
+    { name = "fastslide", specifier = ">=0.8.1" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "numpy", specifier = ">=2.5.4" },
+    { name = "numpy", specifier = ">=2.4.6" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
     { name = "openslide-bin", specifier = ">=4.0.0" },
     { name = "openslide-python", specifier = ">=1.4.3" },
     { name = "pillow", specifier = ">=10.0" },
 ]
-provides-extras = ["fastslide"]
 
 [package.metadata.requires-dev]
 dev = [

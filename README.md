@@ -15,13 +15,12 @@ Many excellent tools already tile WSIs, but most are part of larger frameworks t
 
 ## Install
 
-Requires Python 3.12+. The OpenSlide backend is always installed (its binaries
-come with `openslide-bin`, so no system package is needed); the `fastslide`
-extra adds the FastSlide backend.
+Requires Python 3.12+. Both slide backends, OpenSlide and FastSlide, are
+installed with patchology (OpenSlide's binaries come with `openslide-bin`, so
+no system package is needed).
 
 ```bash
-pip install patchology                # OpenSlide backend
-pip install "patchology[fastslide]"   # OpenSlide + FastSlide backends
+pip install patchology
 ```
 
 For development, install from a clone in editable mode, so a `git pull` takes
@@ -30,7 +29,7 @@ effect without reinstalling:
 ```bash
 git clone https://github.com/twpkevin06222/patchology.git
 cd patchology
-pip install -e ".[fastslide]"
+pip install -e .
 ```
 
 ### Patched OpenSlide (optional)
@@ -445,13 +444,25 @@ importing patchology), that setup is left untouched.
 ## Development
 
 ```bash
-uv sync --all-extras
+uv sync
 uv run pytest
 # Backend conformance tests against a real slide:
 PATCHOLOGY_TEST_SLIDE=/path/to/slide.svs uv run pytest
 ```
 
+## Credits
+
+patchology builds on these projects:
+
+- [FastSlide](https://github.com/NKI-AI/fastslide): fast whole-slide image
+  reader, one of the two backends.
+- [OpenSlide](https://github.com/openslide/openslide): whole-slide image
+  reader, the other backend.
+- [QuPath](https://github.com/qupath/qupath): its GeoJSON annotation format
+  is what patchology reads for ROIs and ground truth.
+
 ## License
 
 Apache License 2.0, see [LICENSE](LICENSE). OpenSlide (installed via
-`openslide-bin`) is LGPL-2.1 and is used as a separate library.
+`openslide-bin`) is LGPL-2.1 and is used as a separate library; FastSlide is
+Apache-2.0.

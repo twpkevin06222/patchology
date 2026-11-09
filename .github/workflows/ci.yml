@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_call: # release.yml runs this before publishing
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # The locked ruff, so a new ruff release cannot change the formatting check.
+      - run: uv run --locked --only-dev ruff check .
+      - run: uv run --locked --only-dev ruff format --check .
+
+  test:
+    name: test (uv, Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python ${{ matrix.python }}
+      - run: uv run --locked pytest
+
+  # uv ignores upper bounds on a dependency's Requires-Python, pip does not
+  # (FastSlide 0.8.1 was uninstallable with pip on 3.12+). Install the built
+  # wheel the way users will, then run the tests against it.
+  pip-install:
+    name: test (pip wheel install, Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build --wheel --out-dir dist
+      - run: |
+          python -m venv /tmp/env
+          /tmp/env/bin/python -m pip install dist/*.whl pytest
+      - name: Run the tests against the installed wheel, not src/
+        run: |
+          /tmp/env/bin/python -c "import patchology, sys; assert 'site-packages' in patchology.__file__, patchology.__file__"
+          /tmp/env/bin/python -m pytest

@@ -123,6 +123,37 @@ def test_open_slide_treats_missing_backend_as_unavailable(monkeypatch, tmp_path:
     assert open_slide(path, "fastslide").backend == "array"
 
 
+def test_open_slide_falls_back_on_unexpected_open_errors(
+    monkeypatch, tmp_path: Path, slide_image, caplog
+):
+    path = tmp_path / "slide.isyntax"
+    path.touch()
+
+    def broken(p):
+        raise RuntimeError("GetQuickHash not implemented for this reader")
+
+    working = lambda p: ArrayReader(slide_image, path=p)
+    _patch_backends(monkeypatch, {"fastslide": broken, "openslide": working})
+    assert open_slide(path, "fastslide").backend == "array"
+    assert "fell back to openslide (fastslide: RuntimeError: GetQuickHash" in caplog.text
+    with pytest.raises(SlideOpenError, match="fastslide: RuntimeError: GetQuickHash") as info:
+        open_slide(path, "fastslide", fallback=False)
+    assert isinstance(info.value.__cause__, RuntimeError)
+
+
+def test_open_slide_does_not_swallow_interrupts(monkeypatch, tmp_path: Path, slide_image):
+    path = tmp_path / "slide.svs"
+    path.touch()
+
+    def interrupted(p):
+        raise KeyboardInterrupt
+
+    working = lambda p: ArrayReader(slide_image, path=p)
+    _patch_backends(monkeypatch, {"fastslide": interrupted, "openslide": working})
+    with pytest.raises(KeyboardInterrupt):
+        open_slide(path, "fastslide")
+
+
 def test_open_slide_argument_errors(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         open_slide(tmp_path / "missing.svs")

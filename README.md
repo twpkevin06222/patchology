@@ -1,7 +1,7 @@
 # patchology
 
 <p align="center">
-  <img src="src/patchology/figures/patchology_banner.png" alt="patchology: whole-slide image tiling for Python" width="100%">
+  <img src="https://raw.githubusercontent.com/twpkevin06222/patchology/main/docs/figures/patchology_bannerv2.png" alt="patchology: whole-slide image tiling for Python" width="100%">
 </p>
 
 Whole slide image (WSI) tiling: tissue detection, artifact removal and square
@@ -15,21 +15,23 @@ Many excellent tools already tile WSIs, but most are part of larger frameworks t
 
 ## Install
 
-patchology is not on PyPI yet; install it from a clone (Python 3.12+). The
-OpenSlide backend is always installed (its binaries come with `openslide-bin`,
-so no system package is needed); the `fastslide` extra adds the FastSlide
-backend.
+Requires Python 3.12+. The OpenSlide backend is always installed (its binaries
+come with `openslide-bin`, so no system package is needed); the `fastslide`
+extra adds the FastSlide backend.
+
+```bash
+pip install patchology                # OpenSlide backend
+pip install "patchology[fastslide]"   # OpenSlide + FastSlide backends
+```
+
+For development, install from a clone in editable mode, so a `git pull` takes
+effect without reinstalling:
 
 ```bash
 git clone https://github.com/twpkevin06222/patchology.git
 cd patchology
-
-pip install -e .                # OpenSlide backend
-pip install -e ".[fastslide]"   # OpenSlide + FastSlide backends
+pip install -e ".[fastslide]"
 ```
-
-`-e` installs in editable mode, so a `git pull` takes effect without
-reinstalling.
 
 ### Patched OpenSlide (optional)
 
@@ -142,7 +144,7 @@ with DetectionTileGenerator(
 
 GeoJSON format: ROI and ground-truth files are QuPath-style GeoJSON with
 coordinates in level-0 (full resolution) pixels. See
-[`src/patchology/references/sample.svs_annotations.geojson`](src/patchology/references/sample.svs_annotations.geojson)
+[`src/patchology/references/sample.svs_annotations.geojson`](https://github.com/twpkevin06222/patchology/blob/main/src/patchology/references/sample.svs_annotations.geojson)
 for a complete example. A `FeatureCollection` (a single `Feature`, a list of
 features or a bare geometry also work) of `Polygon` / `MultiPolygon` features;
 the class is read from `properties.classification.name`, and other geometry
@@ -348,7 +350,7 @@ normalisation then maps the slide's hematoxylin and eosin colours onto a
 target, which reduces staining differences between labs and batches. ICC runs
 first, so stains are estimated on calibrated colours.
 
-![ICC calibration and stain normalisation](src/patchology/figures/color_comparison.png)
+![ICC calibration and stain normalisation](https://raw.githubusercontent.com/twpkevin06222/patchology/main/docs/figures/color_comparison.png)
 *Three 512 px tiles at 0.5 µm/px: (a) as stored, (b) after ICC calibration to
 sRGB, (c) after ICC and Macenko normalisation to `REFERENCE_STAINS`, (d) after
 Macenko normalisation alone, with stains estimated on uncalibrated colours.*
@@ -386,10 +388,10 @@ visualize_slide(
 `draw_mask` and `draw_tiles` are the numpy building blocks, for composing
 your own figures.
 
-![Tiling overlays](src/patchology/figures/overlays.png)
+![Tiling overlays](https://raw.githubusercontent.com/twpkevin06222/patchology/main/docs/figures/overlays.png)
 *512×512 px tiles at 0.5 µm/px, `tile_overlap=0`, `tissue_overlap=0.1`.*
 
-![Tiling overlays, 20% overlap](src/patchology/figures/overlays_overlap20.png)
+![Tiling overlays, 20% overlap](https://raw.githubusercontent.com/twpkevin06222/patchology/main/docs/figures/overlays_overlap20.png)
 *Same slide with `tile_overlap=0.2`.*
 
 ## Logging

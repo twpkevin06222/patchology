@@ -11,7 +11,7 @@ from pathlib import Path
 
 from patchology import TilingConfig, TilingPipeline, open_slide
 
-FIGURES_DIR = Path(__file__).resolve().parent.parent / "figures"
+FIGURES_DIR = Path(__file__).resolve().parents[3] / "docs" / "figures"  # repo checkout only
 TILE, MPP, OVERLAP = 512, 0.5, 0.1
 TILE_OVERLAPS = {"overlays.png": 0.0, "overlays_overlap20.png": 0.2}
 

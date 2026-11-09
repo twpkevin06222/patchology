@@ -16,7 +16,7 @@ import numpy as np
 
 from patchology import REFERENCE_STAINS, ColorConfig, TilingConfig, TilingPipeline, open_slide
 
-FIGURES_DIR = Path(__file__).resolve().parent.parent / "figures"
+FIGURES_DIR = Path(__file__).resolve().parents[3] / "docs" / "figures"  # repo checkout only
 TILE, MPP, ROWS = 512, 0.5, 3
 
 

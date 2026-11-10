@@ -1,0 +1,55 @@
+name: Dependencies
+
+# Weekly: test against the newest dependency releases users can install
+# (with pip, as most users do) and against the oldest versions pyproject.toml
+# allows, so a new numpy, opencv or FastSlide release, or a minimum that is
+# too low, shows up here before it reaches a user.
+
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  newest:
+    name: newest (pip, Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: |
+          python -m venv /tmp/env
+          /tmp/env/bin/python -m pip install --no-cache-dir --upgrade . pytest
+          /tmp/env/bin/python -m pip list
+      - id: slide
+        uses: ./.github/actions/test-slide
+      - run: /tmp/env/bin/python -m pytest
+        env:
+          PATCHOLOGY_TEST_SLIDE: ${{ steps.slide.outputs.path }}
+
+  oldest:
+    name: oldest allowed (uv lowest-direct, Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: |
+          uv venv -p 3.12 /tmp/env
+          uv pip install --python /tmp/env pytest
+          # Only patchology's own dependencies at their minimums, not pytest.
+          uv pip install --python /tmp/env --resolution lowest-direct .
+          uv pip list --python /tmp/env
+      - id: slide
+        uses: ./.github/actions/test-slide
+      - run: /tmp/env/bin/python -m pytest
+        env:
+          PATCHOLOGY_TEST_SLIDE: ${{ steps.slide.outputs.path }}

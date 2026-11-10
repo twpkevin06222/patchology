@@ -18,16 +18,20 @@ jobs:
   build:
     needs: ci
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - name: Check the tag matches the version in pyproject.toml
+        id: version
         run: |
           version=$(uv run --no-project python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
           if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
             echo "::error::tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${version}"
             exit 1
           fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - run: uv build
       - run: uvx twine check --strict dist/*
       - uses: actions/upload-artifact@v4
@@ -49,3 +53,70 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Install what users get from PyPI, with plain pip, and run the full test
+  # suite from the tagged source against it. A failure here means: yank the
+  # release on PyPI and publish a fixed patch version.
+  verify:
+    name: verify PyPI install (Python ${{ matrix.python }})
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Wait for the release to appear on the PyPI index
+        run: |
+          for attempt in $(seq 1 30); do
+            if python -m pip download --no-deps --no-cache-dir -d /tmp/probe "patchology==${VERSION}" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::patchology ${VERSION} not installable from PyPI after 10 minutes"
+          exit 1
+      - run: |
+          python -m venv /tmp/env
+          /tmp/env/bin/python -m pip install --no-cache-dir "patchology==${VERSION}" pytest
+      - id: slide
+        uses: ./.github/actions/test-slide
+      - name: Run the tests against the PyPI package, not src/
+        env:
+          PATCHOLOGY_TEST_SLIDE: ${{ steps.slide.outputs.path }}
+        run: |
+          /tmp/env/bin/python -c "import importlib.metadata as m, patchology; assert 'site-packages' in patchology.__file__; assert m.version('patchology') == '${VERSION}'"
+          /tmp/env/bin/python -m pytest
+
+  github-release:
+    needs: [build, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Take the release notes from CHANGELOG.md
+        run: |
+          # The section from "## <version>" up to the next "## " heading.
+          awk -v v="${VERSION}" '/^## / { if (found) exit; if ($2 == v) { found = 1; next } } found' \
+            CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::no '## ${VERSION}' section in CHANGELOG.md"
+            exit 1
+          fi
+      - run: >
+          gh release create "${GITHUB_REF_NAME}" dist/*
+          --verify-tag --title "patchology ${VERSION}" --notes-file notes.md

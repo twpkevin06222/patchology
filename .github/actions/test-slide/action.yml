@@ -11,7 +11,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/cache@v4
+    - uses: actions/cache@v6
       with:
         path: ~/.cache/patchology-test-slide
         key: test-slide-ed92d5a9f2e86df67640d6f92ce3e231419ce127131697fbbce42ad5e002c8a7

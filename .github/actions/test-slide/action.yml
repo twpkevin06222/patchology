@@ -1,0 +1,35 @@
+name: Test slide
+description: >
+  Fetch OpenSlide's CMU-1-Small-Region.svs (1.9 MB, CC0), cached and checked
+  against its published SHA-256, for the real-backend tests.
+
+outputs:
+  path:
+    description: Path of the verified slide, for PATCHOLOGY_TEST_SLIDE.
+    value: ${{ steps.fetch.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: ~/.cache/patchology-test-slide
+        key: test-slide-ed92d5a9f2e86df67640d6f92ce3e231419ce127131697fbbce42ad5e002c8a7
+    - id: fetch
+      shell: bash
+      run: |
+        dir="$HOME/.cache/patchology-test-slide"
+        slide="$dir/CMU-1-Small-Region.svs"
+        mkdir -p "$dir"
+        if [ ! -f "$slide" ]; then
+          # The server drops connections; retry and resume.
+          for attempt in 1 2 3 4 5; do
+            curl -fsSL --retry 3 --retry-all-errors -C - -o "$slide" \
+              https://openslide.cs.cmu.edu/download/openslide-testdata/Aperio/CMU-1-Small-Region.svs \
+              && break
+            sleep 5
+          done
+        fi
+        # sha256 from the openslide-testdata index.yaml
+        echo "ed92d5a9f2e86df67640d6f92ce3e231419ce127131697fbbce42ad5e002c8a7  $slide" | sha256sum -c -
+        echo "path=$slide" >> "$GITHUB_OUTPUT"

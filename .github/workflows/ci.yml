@@ -32,7 +32,11 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --python ${{ matrix.python }}
+      - id: slide
+        uses: ./.github/actions/test-slide
       - run: uv run --locked pytest
+        env:
+          PATCHOLOGY_TEST_SLIDE: ${{ steps.slide.outputs.path }}
 
   # uv ignores upper bounds on a dependency's Requires-Python, pip does not
   # (FastSlide 0.8.1 was uninstallable with pip on 3.12+). Install the built
@@ -54,7 +58,11 @@ jobs:
       - run: |
           python -m venv /tmp/env
           /tmp/env/bin/python -m pip install dist/*.whl pytest
+      - id: slide
+        uses: ./.github/actions/test-slide
       - name: Run the tests against the installed wheel, not src/
+        env:
+          PATCHOLOGY_TEST_SLIDE: ${{ steps.slide.outputs.path }}
         run: |
           /tmp/env/bin/python -c "import patchology, sys; assert 'site-packages' in patchology.__file__, patchology.__file__"
           /tmp/env/bin/python -m pytest

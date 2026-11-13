@@ -13,16 +13,16 @@ wheels = [
 
 [[package]]
 name = "fastslide"
-version = "0.8.1"
+version = "0.8.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/cc/18/50f0e6b6e3cc398fed0d7e110b9d558d6e9141515b987165f7f31dff0b51/fastslide-0.8.1.tar.gz", hash = "sha256:cce6a2f70fe0d69af67196ed77af73f0bd4f354c9254f34ad19b781297a79d14", size = 2907554, upload-time = "2026-09-22T13:48:17.635Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/00/fa/0a2149c77440e23051e57f3a6b06f4fe573ee68a57a61e830a47a028279c/fastslide-0.8.3.tar.gz", hash = "sha256:c06065082bea21173bcbf8b741acfc7a11789383478b1aa6589413e297d4d419", size = 2917630, upload-time = "2026-11-12T14:38:39.584Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/19/b59d498be2c00e7225b02d296876c34929990a04e95ea067ac79f41f5a3a/fastslide-0.8.1-cp312-abi3-macosx_10_9_x86_64.whl", hash = "sha256:c8c1c242e717b3563c16027008ec7ffa8525fa401fe8960116222517b398c509", size = 2114766, upload-time = "2026-09-22T13:48:05.839Z" },
-    { url = "https://files.pythonhosted.org/packages/14/67/5098bb592836e87f7b451f5cdbb61639f00ee6847355bcc51ad71f5c7110/fastslide-0.8.1-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:aa0760baa422186570cd10c25def2c606b58f57bfeca309c957b54100488eaf6", size = 1835503, upload-time = "2026-09-22T13:48:07.785Z" },
-    { url = "https://files.pythonhosted.org/packages/da/87/01ddc5294e4d3f1b241248f107bd8efd95497d3bfae041555c80655251cf/fastslide-0.8.1-cp312-abi3-manylinux2014_aarch64.whl", hash = "sha256:e3309c7a0c8c0fc3dd8b1df676db531af7ed2b15b0c40c9cdf18bcf4b1d478c7", size = 2251766, upload-time = "2026-09-22T13:48:09.748Z" },
-    { url = "https://files.pythonhosted.org/packages/57/3a/11bbaa5054789670701d84b5cc90901953fce52e9c1dd49db880a68a5597/fastslide-0.8.1-cp312-abi3-manylinux2014_x86_64.whl", hash = "sha256:3ac8e5409cfaf447a8d910493b8a2823a835a0ef8d4ea91b156fb486bbde9332", size = 2501732, upload-time = "2026-09-22T13:48:11.633Z" },
-    { url = "https://files.pythonhosted.org/packages/b6/bc/f5d2dd56be51c4cf0bafe6b06e7e9bb7133a269ef70fdaa0372829b1b6a6/fastslide-0.8.1-cp312-abi3-win_amd64.whl", hash = "sha256:bebdc4cb8563703a1ad336b55d45a4342106099945949a830887403b47349a77", size = 1658283, upload-time = "2026-09-22T13:48:13.194Z" },
-    { url = "https://files.pythonhosted.org/packages/13/9c/4b5ce726ed75814561f1408d17cb21e401303bed2c95776c0ee94139d396/fastslide-0.8.1-cp312-abi3-win_arm64.whl", hash = "sha256:ee42dc108230636c77585a4f2f2491d2d7e985cb27c878a05759c8a08df1be40", size = 1524973, upload-time = "2026-09-22T13:48:15.304Z" },
+    { url = "https://files.pythonhosted.org/packages/64/ff/5f411dedd8b090a1653632e0f3f0c09343715a2d13aebd1ee14878d5a537/fastslide-0.8.3-cp312-abi3-macosx_10_9_x86_64.whl", hash = "sha256:ab7e1e01718ffe4a3c46dbfee1353b175f2630bf82bc37073e3e5bb54ed35598", size = 2087570, upload-time = "2026-11-12T14:38:29.953Z" },
+    { url = "https://files.pythonhosted.org/packages/66/12/e1035313a16af36fedf3f9eabfe66ea84150eab6643e98bd984062c20ad7/fastslide-0.8.3-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:a509b26e4e581585403438875d87c18470f4fa54d6ca5384b37306132cc2966c", size = 1832429, upload-time = "2026-11-12T14:38:31.69Z" },
+    { url = "https://files.pythonhosted.org/packages/94/37/389b0b9d99d655946c3b8a59eb0b5a1b29c86173c291b94c24d08a2b0615/fastslide-0.8.3-cp312-abi3-manylinux2014_aarch64.whl", hash = "sha256:f93b70c47c536d635d2a6f0585dda47d69ada47e7ef2b4963dde00b6d3b63c98", size = 2262433, upload-time = "2026-11-12T14:38:33.37Z" },
+    { url = "https://files.pythonhosted.org/packages/21/4c/4b0e380776020488b5666902e97f8d1386e588ad24f84e279987c72bf145/fastslide-0.8.3-cp312-abi3-manylinux2014_x86_64.whl", hash = "sha256:93877fc8fb1f81a069ad2ef4ba32b981c0b3cd4cd3c9f410285e8edf0411f7f7", size = 2513047, upload-time = "2026-11-12T14:38:34.871Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/90/51f25a3a40a365e71309b0afc72f03edb7e1355df136c12509f8853b112f/fastslide-0.8.3-cp312-abi3-win_amd64.whl", hash = "sha256:b26c6b6b5b524981b5d4c3d25573981379080b0cf47bb76c3a3628300de4b0c5", size = 1662730, upload-time = "2026-11-12T14:38:36.539Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/57/861ab8efc40449308675054f52498391599638c1e55ab38e97575a5aefc7/fastslide-0.8.3-cp312-abi3-win_arm64.whl", hash = "sha256:8513405761e1a6d457ca480a3c04ebf0a17f194f3c34a3e10e03016263cb71a5", size = 1575276, upload-time = "2026-11-12T14:38:37.898Z" },
 ]
 
 [[package]]
@@ -189,7 +189,7 @@ wheels = [
 
 [[package]]
 name = "patchology"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastslide" },
@@ -209,7 +209,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastslide", specifier = ">=0.8.0" },
+    { name = "fastslide", specifier = ">=0.8.3" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numpy", specifier = ">=2.4.6" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },

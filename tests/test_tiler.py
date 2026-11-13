@@ -173,7 +173,7 @@ def test_config_validation(kwargs):
 
 
 def test_run_logs_tiling_parameters(slide: ArrayReader, caplog):
-    caplog.set_level("INFO", logger="patchology")
+    caplog.set_level("DEBUG", logger="patchology")
     config = TilingConfig(tile_size=128, tile_mpp=1.0, tissue_overlap=0.9)
     result = TilingPipeline(tiling=config).run(slide)
     w, h = slide.dimensions

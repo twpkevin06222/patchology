@@ -1,6 +1,6 @@
 [project]
 name = "patchology"
-version = "0.1.0"
+version = "0.1.1"
 description = "Whole slide image tissue detection, artifact removal and tiling."
 readme = "README.md"
 license = "Apache-2.0"
@@ -33,7 +33,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "fastslide>=0.8.0",
+    "fastslide>=0.8.3",
     "loguru>=0.7.3",
     "numpy>=2.4.6",
     "opencv-python-headless>=5.0.0.93",

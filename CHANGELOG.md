@@ -5,6 +5,16 @@ All notable changes to patchology are listed here. Versions follow
 (0.2.0) may contain breaking changes and a patch release (0.1.1) contains
 fixes only.
 
+## 0.1.1
+
+### Dependencies
+
+- Require FastSlide 0.8.3 or newer (was 0.8.0). FastSlide now lays out BIF
+  slides as OpenSlide does, reads the MRXS background colour correctly, matches
+  the Philips SDK pixels for iSyntax slides, and uses its tile cache for TIFF
+  slides. The FastSlide backend therefore gives the same tiles as the
+  OpenSlide backend on more slide formats.
+
 ## 0.1.0 — initial release
 
 First public release. Requires Python 3.12+; tested on Python 3.12 and 3.13
